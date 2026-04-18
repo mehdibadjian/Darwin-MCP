@@ -1,7 +1,8 @@
-"""SSE Bridge server — US-1, US-2, US-5, US-21, US-28, US-29, US-32.
+"""SSE Bridge server — US-1, US-2, US-5, US-21, US-28, US-29, US-32, ENH-US7.
 
 Serves the MCP tool list over Server-Sent Events with Bearer token auth.
 All operational state is derived exclusively from registry.json.
+Supports multi-tenant vault routing via the X-Vault-Repo header.
 """
 import asyncio
 import hmac
@@ -26,6 +27,34 @@ from brain.watcher.hot_reload import (
 
 # Token is always sourced from the environment — never hardcoded.
 MCP_BEARER_TOKEN: str = os.environ.get("MCP_BEARER_TOKEN", "")
+
+# ---------------------------------------------------------------------------
+# Vault path resolution — ENH-US7
+# ---------------------------------------------------------------------------
+
+WORKSPACE_ROOT: Path = Path(__file__).resolve().parent.parent.parent
+PRIMARY_VAULT: Path = WORKSPACE_ROOT / "memory"
+SUBMODULES_DIR: Path = WORKSPACE_ROOT / "memory" / "submodules"
+
+
+def resolve_vault_path(vault_id: Optional[str]) -> Path:
+    """Resolve *vault_id* to a filesystem Path.
+
+    Returns PRIMARY_VAULT when *vault_id* is None or empty.
+    Returns SUBMODULES_DIR / vault_id when that directory exists.
+    Raises ValueError("Vault not found") for non-empty ids whose path is absent.
+    """
+    if not vault_id:
+        return PRIMARY_VAULT
+    candidate = SUBMODULES_DIR / vault_id
+    if not candidate.is_dir():
+        raise ValueError("Vault not found")
+    return candidate
+
+
+def get_vault_registry_path(vault_path: Path) -> Path:
+    """Return the registry.json path inside *vault_path*/dna/."""
+    return vault_path / "dna" / "registry.json"
 
 
 def verify_token(authorization: Optional[str]) -> bool:
@@ -63,6 +92,14 @@ async def sse_endpoint(request: Request) -> Response:
     if not verify_token(auth):
         return Response(status_code=401)
 
+    vault_id = request.headers.get("X-Vault-Repo")
+    try:
+        vault_path = resolve_vault_path(vault_id)
+    except ValueError as exc:
+        return Response(status_code=400, content=str(exc))
+
+    registry_path = get_vault_registry_path(vault_path)
+
     async def event_stream():
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_event_loop()
@@ -77,7 +114,7 @@ async def sse_endpoint(request: Request) -> Response:
         flush_queued_notifications(on_notification)
 
         try:
-            registry = read_registry()
+            registry = read_registry(registry_path)
             tools = {
                 name: entry
                 for name, entry in registry["skills"].items()
@@ -106,7 +143,14 @@ async def invoke_tool(name: str, request: Request) -> Response:
     if not verify_token(auth):
         return Response(status_code=401)
 
-    registry = read_registry()
+    vault_id = request.headers.get("X-Vault-Repo")
+    try:
+        vault_path = resolve_vault_path(vault_id)
+    except ValueError as exc:
+        return Response(status_code=400, content=str(exc))
+
+    registry_path = get_vault_registry_path(vault_path)
+    registry = read_registry(registry_path)
     skill = registry.get("skills", {}).get(name)
     if skill is None:
         return Response(status_code=404, content=f"Tool '{name}' not found")
@@ -142,6 +186,12 @@ async def evolve_endpoint(request: Request) -> Response:
         )
 
     memory_dir = Path(__file__).resolve().parent.parent.parent / "memory"
+    vault_id = request.headers.get("X-Vault-Repo")
+    try:
+        vault_path = resolve_vault_path(vault_id)
+        memory_dir = vault_path
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(exc)})
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         None,

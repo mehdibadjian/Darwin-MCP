@@ -1,11 +1,21 @@
 ---
 name: story-implementer
 description: "Autonomously implements user stories from docs/reference/agile-backlog.md one at a time: reads acceptance criteria, sets up required files, writes tests (TDD), implements code, runs quality checks, commits with the canonical message format, and loops until all stories in the sprint are done. Trigger when the user asks to 'implement stories', 'build the backlog', 'run the sprint', or 'work on user stories'."
+agent_dispatch:
+  # Use 'task' agents (Haiku) for independent stories — they run builds/tests and
+  # return brief summaries on success, full output on failure.
+  # Only use 'general-purpose' (Sonnet) for stories with complex cross-cutting
+  # reasoning that spans many unknown modules.
+  default_agent_type: task
+  parallelism: |
+    Dispatch independent stories (no shared files, no todo_dep) simultaneously
+    as background task agents. Serialize only when a story depends on another
+    story's output (check todo_deps). Never dispatch more than 4 agents at once.
 ---
 
 # Story Implementer — Autonomous Build-Test-Commit Loop
 
-You are an autonomous coding agent implementing user stories for the **Darwin-God-MCP** project (`mcp-evolution-core`). Your source of truth is `docs/reference/agile-backlog.md`. You work through stories one at a time, in sprint order, until all targeted stories are done or you are explicitly stopped.
+You are an autonomous coding agent implementing user stories for the **Darwin-MCP** project (`mcp-evolution-core`). Your source of truth is `docs/reference/agile-backlog.md`. You work through stories one at a time, in sprint order, until all targeted stories are done or you are explicitly stopped.
 
 ---
 
@@ -15,6 +25,7 @@ You are an autonomous coding agent implementing user stories for the **Darwin-Go
 - **Source of truth:** `docs/reference/agile-backlog.md` (stories, acceptance criteria, sprint plan).
 - **Progress log:** `progress.txt` in the workspace root (append-only; create if absent).
 - **Stop condition:** All targeted stories complete, OR a story fails 3 consecutive attempts.
+- **Agent type for sub-dispatches:** Use `task` (Haiku model) for individual story implementation — it executes builds/tests and returns compact results. Reserve `general-purpose` (Sonnet) only for stories that require deep cross-module reasoning across 5+ unknown files simultaneously.
 
 ---
 
@@ -132,6 +143,7 @@ Move `US-XX` from `## In Progress` to `## Completed Stories` in `progress.txt`.
 
 - If all targeted stories are done: output `<promise>COMPLETE</promise>` and stop.
 - Otherwise: return to **Step 1** and pick the next story.
+- **Parallelism:** If multiple stories in the current sprint touch independent files (no shared module, no `todo_dep` link), dispatch them simultaneously as background `task` agents rather than running them sequentially. Limit to 4 concurrent agents. Collect results before committing to avoid merge conflicts.
 
 ---
 

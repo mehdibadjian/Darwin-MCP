@@ -168,7 +168,7 @@ For the overall project, output 4–6 Definition of Done items:
 
 ```json
 {
-  "project": "Darwin-God-MCP",
+  "project": "Darwin-MCP",
   "generated_at": "ISO-8601 timestamp",
   "epics": [ ...EP objects... ],
   "features": [ ...F objects... ],
@@ -195,7 +195,7 @@ For the overall project, output 4–6 Definition of Done items:
 
 ---
 
-## Application to Darwin-God-MCP Manifesto
+## Application to Darwin-MCP Manifesto
 
 When applied to [docs/reference/technical-manifesto.md](../../docs/reference/technical-manifesto.md), produce epics for these system boundaries identified in the manifest:
 

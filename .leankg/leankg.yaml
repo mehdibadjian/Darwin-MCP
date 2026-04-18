@@ -1,0 +1,28 @@
+project:
+  name: .leankg
+  root: .
+  languages:
+  - go
+  - typescript
+  - python
+indexer:
+  exclude:
+  - '**/node_modules/**'
+  - '**/vendor/**'
+  include:
+  - '*.go'
+  - '*.ts'
+  - '*.py'
+mcp:
+  enabled: true
+  port: 3000
+  auth_token: ''
+  auto_index_on_start: true
+  auto_index_threshold_minutes: 5
+  auto_index_on_db_write: true
+documentation:
+  output: ./docs
+  templates:
+  - agents
+  - claude
+microservice: null

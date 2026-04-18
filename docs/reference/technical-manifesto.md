@@ -1,6 +1,6 @@
-# Master Technical Manifesto: Darwin-God-MCP
+# Master Technical Manifesto: Darwin-MCP
 
-This document defines the API contracts, Git state machine, and Sandbox isolation in granular detail. It is the authoritative low-level specification for the Darwin-God-MCP system.
+This document defines the API contracts, Git state machine, and Sandbox isolation in granular detail. It is the authoritative low-level specification for the Darwin-MCP system.
 
 ---
 
@@ -167,7 +167,7 @@ Errors must always be **contextualized**:
 
 ## 5. Full Build Prompt
 
-> Architect the **Darwin-God-MCP** triad.
+> Architect the **Darwin-MCP** triad.
 >
 > 1. **Brain:** Create a Python SSE MCP Server in `brain/`. It must be stateless and load all tool definitions from `../memory/dna/registry.json`.
 > 2. **Memory:** Create a submodule structure in `memory/` for private storage of scripts and schemas.
@@ -184,7 +184,7 @@ To survive reboots and crashes on the $5 Droplet, generate a `darwin.service` un
 
 ```ini
 [Unit]
-Description=Darwin-God-MCP Brain
+Description=Darwin-MCP Brain
 After=network.target
 
 [Service]

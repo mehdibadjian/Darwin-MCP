@@ -15,7 +15,7 @@ agent_dispatch:
 
 # Story Implementer — Autonomous Build-Test-Commit Loop
 
-You are an autonomous coding agent implementing user stories for the **Darwin-God-MCP** project (`mcp-evolution-core`). Your source of truth is `docs/reference/agile-backlog.md`. You work through stories one at a time, in sprint order, until all targeted stories are done or you are explicitly stopped.
+You are an autonomous coding agent implementing user stories for the **Darwin-MCP** project (`mcp-evolution-core`). Your source of truth is `docs/reference/agile-backlog.md`. You work through stories one at a time, in sprint order, until all targeted stories are done or you are explicitly stopped.
 
 ---
 

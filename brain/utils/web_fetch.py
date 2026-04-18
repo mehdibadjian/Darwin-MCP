@@ -1,4 +1,4 @@
-"""Web fetch utility for the Darwin-God-MCP brain.
+"""Web fetch utility for the Darwin-MCP brain.
 
 Fetches a URL and returns plain text, stripping HTML tags.
 Also provides search_web() using DuckDuckGo HTML (no API key required).
@@ -10,7 +10,7 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
-_USER_AGENT = "Mozilla/5.0 (compatible; DarwinMCP/1.0; +https://github.com/darwin-god-mcp)"
+_USER_AGENT = "Mozilla/5.0 (compatible; DarwinMCP/1.0; +https://github.com/darwin-mcp)"
 _DEFAULT_TIMEOUT = 10
 _DDG_URL = "https://html.duckduckgo.com/html/"
 

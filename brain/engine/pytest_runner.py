@@ -1,4 +1,4 @@
-"""pytest runner for Darwin-God-MCP — US-10 / US-11."""
+"""pytest runner for Darwin-MCP — US-10 / US-11."""
 import subprocess
 import tempfile
 from pathlib import Path

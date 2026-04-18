@@ -1,5 +1,5 @@
 [Unit]
-Description=Darwin-God-MCP Brain
+Description=Darwin-MCP Brain
 After=network.target
 
 [Service]

@@ -1,4 +1,4 @@
-# Darwin-God-MCP — Agile Backlog
+# Darwin-MCP — Agile Backlog
 
 Generated from: [technical-manifesto.md](technical-manifesto.md)  
 Generated at: 2026-04-18T00:00:00Z  

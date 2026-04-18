@@ -1,4 +1,4 @@
-"""Mutation engine for Darwin-God-MCP — Sprint 2/3.
+"""Mutation engine for Darwin-MCP — Sprint 2/3.
 
 Orchestrates: input validation → pytest sandbox tests → species file
 promotion → atomic registry update → dependency tracking + env rebuild.

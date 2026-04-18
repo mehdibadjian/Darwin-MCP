@@ -1,4 +1,4 @@
-"""Registry utilities for the Darwin-God-MCP organism.
+"""Registry utilities for the Darwin-MCP organism.
 
 Provides bootstrap (init_registry), schema-validated reads (read_registry),
 and atomic writes (write_registry) for memory/dna/registry.json.

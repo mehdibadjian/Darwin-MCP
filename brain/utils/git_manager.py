@@ -1,4 +1,4 @@
-"""Git Manager for Darwin-God-MCP — US-13, US-14, US-15, US-16.
+"""Git Manager for Darwin-MCP — US-13, US-14, US-15, US-16.
 
 Handles: git add → commit (evolution: {name} v{version}) → push to origin main,
 with automatic pull --rebase + retry on push rejection.

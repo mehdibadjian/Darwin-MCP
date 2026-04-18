@@ -1,8 +1,8 @@
-# Darwin-God-MCP — Copilot Instructions
+# Darwin-MCP — Copilot Instructions
 
 ## Project Identity
 
-This is **mcp-evolution-core** — the Brain of the Darwin-God-MCP system. It is a stateless MCP SSE server deployed on a $5 Droplet that enables a Host LLM to evolve, register, and invoke AI skills (species) at runtime.
+This is **mcp-evolution-core** — the Brain of the Darwin-MCP system. It is a stateless MCP SSE server deployed on a $5 Droplet that enables a Host LLM to evolve, register, and invoke AI skills (species) at runtime.
 
 ## Architecture at a Glance
 

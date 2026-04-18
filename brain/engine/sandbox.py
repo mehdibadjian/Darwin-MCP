@@ -1,5 +1,8 @@
-"""Sandboxed virtualenv for mutation testing — US-8 & US-9."""
+"""Sandboxed virtualenv for mutation testing — US-8 & US-9 & ENH-US1."""
+import os
+import resource
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -7,6 +10,10 @@ from pathlib import Path
 
 
 class SandboxError(Exception):
+    pass
+
+
+class SandboxTimeoutError(SandboxError):
     pass
 
 
@@ -70,3 +77,49 @@ class Sandbox:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
         return False
+
+    def run_isolated(self, cmd, timeout=2.0, memory_limit_bytes=None):
+        """Run *cmd* in an isolated process group.
+
+        Kills the entire process group on timeout and raises SandboxTimeoutError.
+        Optionally enforces a virtual-address-space cap via RLIMIT_AS (Linux).
+        Returns (stdout, stderr) on success.
+        """
+        def _preexec():
+            os.setsid()
+            if memory_limit_bytes is not None:
+                resource.setrlimit(
+                    resource.RLIMIT_AS,
+                    (memory_limit_bytes, memory_limit_bytes),
+                )
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            preexec_fn=_preexec,
+        )
+
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.communicate()
+            raise SandboxTimeoutError(
+                f"Process exceeded timeout of {timeout}s and was killed"
+            )
+
+        if proc.returncode != 0:
+            if memory_limit_bytes is not None:
+                raise SandboxError(
+                    f"Process killed — memory limit of {memory_limit_bytes} bytes exceeded"
+                )
+            raise SandboxError(
+                f"Process failed (exit {proc.returncode}): {stderr}"
+            )
+
+        return stdout, stderr

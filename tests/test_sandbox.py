@@ -1,13 +1,15 @@
-"""Tests for brain/engine/sandbox.py — US-8 & US-9."""
+"""Tests for brain/engine/sandbox.py — US-8, US-9 & ENH-US1."""
+import platform
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from brain.engine.sandbox import Sandbox, SandboxError
+from brain.engine.sandbox import Sandbox, SandboxError, SandboxTimeoutError
 
 
 # ---------------------------------------------------------------------------
@@ -135,3 +137,62 @@ def test_context_manager_cleans_up_on_exit(tmp_path):
         with Sandbox(base_dir=tmp_path) as s:
             sandbox_path = s.path
     assert not sandbox_path.exists(), "context manager should clean up sandbox"
+
+
+# ---------------------------------------------------------------------------
+# ENH-US1 AC-1 — run_isolated returns stdout on success
+# ---------------------------------------------------------------------------
+
+def test_run_isolated_success(tmp_path):
+    s = Sandbox(base_dir=tmp_path)
+    stdout, stderr = s.run_isolated([sys.executable, "-c", "print('hello')"])
+    assert "hello" in stdout
+
+
+# ---------------------------------------------------------------------------
+# ENH-US1 AC-1 — run_isolated kills process on timeout
+# ---------------------------------------------------------------------------
+
+def test_run_isolated_timeout_kills_process(tmp_path):
+    s = Sandbox(base_dir=tmp_path)
+    with pytest.raises(SandboxTimeoutError, match="timeout"):
+        s.run_isolated(
+            [sys.executable, "-c", "import time; time.sleep(10)"],
+            timeout=0.5,
+        )
+
+
+# ---------------------------------------------------------------------------
+# ENH-US1 AC-1 — parent process unaffected after child timeout
+# ---------------------------------------------------------------------------
+
+def test_run_isolated_timeout_does_not_affect_parent(tmp_path):
+    s = Sandbox(base_dir=tmp_path)
+    with pytest.raises(SandboxTimeoutError):
+        s.run_isolated(
+            [sys.executable, "-c", "import time; time.sleep(10)"],
+            timeout=0.5,
+        )
+    # parent must continue normally after child is killed
+    result = s.run_isolated([sys.executable, "-c", "print('alive')"])
+    assert "alive" in result[0]
+
+
+# ---------------------------------------------------------------------------
+# ENH-US1 AC-2 — memory-limited subprocess raises SandboxError
+# (RLIMIT_AS enforcement is Linux-only; skip on macOS)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(
+    platform.system() == "Darwin",
+    reason="RLIMIT_AS not reliably enforced on macOS; feature targets Linux Droplet",
+)
+def test_run_isolated_with_memory_limit(tmp_path):
+    # 50 MB address-space limit — small enough to prevent a 500 MB allocation
+    limit = 50 * 1024 * 1024
+    s = Sandbox(base_dir=tmp_path)
+    with pytest.raises(SandboxError):
+        s.run_isolated(
+            [sys.executable, "-c", "x = bytearray(500 * 1024 * 1024)"],
+            memory_limit_bytes=limit,
+        )

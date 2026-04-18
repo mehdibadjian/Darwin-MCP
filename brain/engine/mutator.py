@@ -62,11 +62,20 @@ def _get_version(registry, name):
     return 1
 
 
-def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None, requirements_path=None):
+def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None, requirements_path=None, recursion_depth=0, git_commit=False, memory_dir=None):
     """Orchestrate the mutation pipeline.
 
     Returns MutationResult.
     """
+    from brain.engine.guard import check_recursion_depth, RecursionLimitError
+    try:
+        check_recursion_depth(recursion_depth, name)
+    except RecursionLimitError as e:
+        return MutationResult(
+            success=False,
+            error=f"Circuit breaker triggered: recursion depth {e.depth} for skill '{e.skill_name}'",
+        )
+
     if python_bin is None:
         python_bin = sys.executable
     # Step 1: Validate inputs
@@ -120,6 +129,14 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
                 registry["skills"][name]["rebuild_error"] = err
                 write_registry(registry, registry_path)
             logging.error(f"Rebuild failed for {name}: {err}")
+
+    # Step 7: Git commit + push (US-13–US-16)
+    if git_commit:
+        from brain.utils.git_manager import commit_and_push
+        try:
+            commit_and_push(name, version, memory_dir=memory_dir)
+        except Exception as e:
+            logging.warning(f"git push failed for {name} v{version}: {e}")
 
     return MutationResult(
         success=True,

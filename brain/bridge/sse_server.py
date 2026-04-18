@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from brain.engine.mutator import request_evolution
 from brain.utils.registry import discover_species, init_registry, read_registry
 from brain.watcher.hot_reload import (
     flush_queued_notifications,
@@ -114,3 +115,35 @@ async def invoke_tool(name: str, request: Request) -> Response:
             content=f"Tool '{name}' is quarantined (Toxic). Manual review required.",
         )
     return Response(content=json.dumps({"name": name, "status": "ok"}), media_type="application/json")
+
+
+@app.post("/evolve")
+async def evolve_endpoint(request: Request) -> Response:
+    """Receive a mutation payload and run the full request_evolution pipeline."""
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid JSON"})
+
+    name = body.get("name", "").strip()
+    code = body.get("code", "")
+    tests = body.get("tests", "")
+    requirements = body.get("requirements", [])
+
+    if not name or not code or not tests:
+        return JSONResponse(
+            status_code=422,
+            content={"status": "error", "message": "name, code, and tests are required"},
+        )
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, lambda: request_evolution(name=name, code=code, tests=tests, requirements=requirements)
+    )
+    if result.success:
+        return JSONResponse(status_code=200, content={"status": "success", **result.to_dict()})
+    return JSONResponse(status_code=422, content={"status": "error", **result.to_dict()})

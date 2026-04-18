@@ -1,0 +1,17 @@
+[Unit]
+Description=Darwin-God-MCP Brain
+After=network.target
+
+[Service]
+Type=simple
+User=darwin
+WorkingDirectory=/opt/mcp-evolution-core
+ExecStart=/opt/mcp-evolution-core/.venv/bin/python brain/bridge/sse_server.py
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+EnvironmentFile=/opt/mcp-evolution-core/.env
+
+[Install]
+WantedBy=multi-user.target

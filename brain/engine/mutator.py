@@ -1,13 +1,15 @@
 """Mutation engine for Darwin-God-MCP — Sprint 2/3.
 
 Orchestrates: input validation → pytest sandbox tests → species file
-promotion → atomic registry update.
+promotion → atomic registry update → dependency tracking + env rebuild.
 """
+import logging
 import sys
 import datetime
 from pathlib import Path
 
 from brain.utils.registry import read_registry, write_registry, init_registry, REGISTRY_PATH
+from brain.engine.deps import update_requirements, rebuild_env
 
 SPECIES_DIR = Path(__file__).resolve().parent.parent.parent / "memory" / "species"
 
@@ -60,7 +62,7 @@ def _get_version(registry, name):
     return 1
 
 
-def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None):
+def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None, requirements_path=None):
     """Orchestrate the mutation pipeline.
 
     Returns MutationResult.
@@ -106,6 +108,18 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
     registry["skills"][name] = entry
     registry["last_mutation"] = entry["evolved_at"]
     write_registry(registry, registry_path)
+
+    # Step 6: Dependency tracking + env rebuild (US-22, US-23)
+    added_deps = update_requirements(requirements, requirements_path=requirements_path)
+    if added_deps:
+        success, err = rebuild_env(requirements_path=requirements_path)
+        if not success:
+            registry = read_registry(registry_path)
+            if name in registry["skills"]:
+                registry["skills"][name]["status"] = "rebuild_failed"
+                registry["skills"][name]["rebuild_error"] = err
+                write_registry(registry, registry_path)
+            logging.error(f"Rebuild failed for {name}: {err}")
 
     return MutationResult(
         success=True,

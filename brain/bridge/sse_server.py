@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from brain.engine.mutator import request_evolution
-from brain.utils.registry import discover_species, init_registry, read_registry
+from brain.utils.registry import discover_species, init_registry, read_registry, write_registry
 from brain.utils.web_fetch import fetch_url, fetch_urls, search_web
 from brain.watcher.hot_reload import (
     flush_queued_notifications,
@@ -75,9 +75,26 @@ def cleanup_stale_sandboxes() -> None:
             shutil.rmtree(p, ignore_errors=True)
 
 
+def _register_builtin_tools(registry_path=None) -> None:
+    """Ensure built-in tools like get_droplet_vitals are in the registry."""
+    init_registry(registry_path)
+    registry = read_registry(registry_path)
+    if "get_droplet_vitals" not in registry["skills"]:
+        registry["skills"]["get_droplet_vitals"] = {
+            "path": "brain/engine/vitals.py",
+            "entry_point": "get_droplet_vitals",
+            "runtime": "builtin",
+            "dependencies": ["psutil"],
+            "status": "active",
+            "description": "Returns Droplet CPU, RAM, disk vitals and last 10 evolution log lines",
+        }
+        write_registry(registry, registry_path)
+
+
 def _startup() -> None:
     init_registry()
     discover_species()
+    _register_builtin_tools()
     cleanup_stale_sandboxes()
     start_watcher()
 
@@ -148,6 +165,13 @@ async def invoke_tool(name: str, request: Request) -> Response:
         vault_path = resolve_vault_path(vault_id)
     except ValueError as exc:
         return Response(status_code=400, content=str(exc))
+
+    if name == "get_droplet_vitals":
+        from brain.engine.vitals import collect, get_evolution_log_tail
+        metrics = collect()
+        log_lines = get_evolution_log_tail()
+        payload = {**metrics, "evolution_log_tail": log_lines}
+        return JSONResponse(status_code=200, content=payload)
 
     registry_path = get_vault_registry_path(vault_path)
     registry = read_registry(registry_path)

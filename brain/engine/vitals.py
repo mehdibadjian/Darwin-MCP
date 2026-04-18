@@ -1,12 +1,26 @@
-"""System Vitals — Droplet health metrics collection (ENH-US9)."""
+"""System Vitals — Droplet health metrics collection (ENH-US9, ENH-US10)."""
 import os
 import logging
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, List, Optional
 
 import psutil
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_LOG_PATH: Path = Path(__file__).resolve().parent.parent.parent / "memory" / "evolution.log"
+
+
+def get_evolution_log_tail(log_path: Optional[str] = None, n: int = 10) -> List[str]:
+    """Return the last *n* lines of evolution.log. Returns [] if the file is absent."""
+    path = Path(log_path) if log_path is not None else _DEFAULT_LOG_PATH
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    while lines and lines[-1] == "":
+        lines.pop()
+    return lines[-n:]
 
 
 def collect() -> dict:

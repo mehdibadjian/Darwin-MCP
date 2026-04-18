@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 
-from brain.utils.registry import init_registry, read_registry
+from brain.utils.registry import discover_species, init_registry, read_registry
 
 # Token is always sourced from the environment — never hardcoded.
 MCP_BEARER_TOKEN: str = os.environ.get("MCP_BEARER_TOKEN", "")
@@ -39,6 +39,7 @@ def cleanup_stale_sandboxes() -> None:
 
 def _startup() -> None:
     init_registry()
+    discover_species()
     cleanup_stale_sandboxes()
 
 

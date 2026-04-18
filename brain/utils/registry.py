@@ -77,3 +77,37 @@ def write_registry(data: dict, registry_path: Optional[Path] = None) -> None:
     tmp_path = path.with_suffix(".json.tmp")
     tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(tmp_path, path)
+
+
+def discover_species(
+    species_dir: Optional[Path] = None,
+    registry_path: Optional[Path] = None,
+) -> dict:
+    """Walk *species_dir* and upsert each .py file into registry.json.
+
+    Idempotent: running twice produces the same result.
+    Creates registry.json if absent.
+    """
+    if species_dir is None:
+        species_dir = Path(__file__).resolve().parent.parent.parent / "memory" / "species"
+    species_dir = Path(species_dir)
+
+    init_registry(registry_path)
+    registry = read_registry(registry_path)
+
+    if not species_dir.exists():
+        return registry
+
+    for py_file in species_dir.glob("*.py"):
+        name = py_file.stem
+        registry["skills"][name] = {
+            "path": str(py_file),
+            "entry_point": name,
+            "runtime": "python3",
+            "dependencies": [],
+            "evolved_at": None,
+            "status": "active",
+        }
+
+    write_registry(registry, registry_path)
+    return registry

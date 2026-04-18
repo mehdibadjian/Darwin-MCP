@@ -1,9 +1,9 @@
-"""Mutation engine for Darwin-God-MCP — Sprint 2.
+"""Mutation engine for Darwin-God-MCP — Sprint 2/3.
 
-Orchestrates: input validation → (Sprint 3: sandbox tests) → species file
+Orchestrates: input validation → pytest sandbox tests → species file
 promotion → atomic registry update.
 """
-import os
+import sys
 import datetime
 from pathlib import Path
 
@@ -44,9 +44,13 @@ def validate_payload(name, code, tests, requirements):
         raise ValidationError("requirements must be a list")
 
 
-def _run_tests(name, code, tests):
-    """Placeholder — Sprint 3 replaces this with sandbox execution."""
-    return True
+def _run_tests(python_bin, test_code, code, name, work_dir=None):
+    """Run tests in sandbox using pytest_runner. Returns (passed: bool, error: str)."""
+    from brain.engine.pytest_runner import run_pytest
+    result = run_pytest(python_bin, test_code, code, name, work_dir)
+    if result.passed:
+        return True, ""
+    return False, result.format_error()
 
 
 def _get_version(registry, name):
@@ -56,11 +60,13 @@ def _get_version(registry, name):
     return 1
 
 
-def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None):
-    """Orchestrate the mutation pipeline (Sprint 2: no sandbox yet).
+def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None):
+    """Orchestrate the mutation pipeline.
 
     Returns MutationResult.
     """
+    if python_bin is None:
+        python_bin = sys.executable
     # Step 1: Validate inputs
     try:
         validate_payload(name, code, tests, requirements)
@@ -74,10 +80,10 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
     species_dir.mkdir(parents=True, exist_ok=True)
     species_file = species_dir / f"{name}.py"
 
-    # Step 3: Run tests (Sprint 3 replaces _run_tests with sandbox)
-    tests_passed = _run_tests(name, code, tests)
+    # Step 3: Run tests in sandbox
+    tests_passed, pytest_error = _run_tests(python_bin, tests, code, name)
     if not tests_passed:
-        return MutationResult(success=False, error="Tests failed")
+        return MutationResult(success=False, error=pytest_error)
 
     # Step 4: Write species file (only on test pass)
     species_file.write_text(code, encoding="utf-8")

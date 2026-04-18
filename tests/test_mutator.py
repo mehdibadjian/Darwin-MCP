@@ -49,7 +49,7 @@ def test_all_required_fields_used():
         result = request_evolution(
             name="alpha",
             code="def run(): return 42",
-            tests="def test_alpha(): assert run() == 42",
+            tests="from alpha import run\ndef test_alpha(): assert run() == 42",
             requirements=["requests"],
             species_dir=sd,
             registry_path=rp,
@@ -138,7 +138,7 @@ def test_no_file_written_on_test_failure():
     try:
         # Patch the tests_passed logic inside request_evolution by patching
         # the internal constant used as placeholder
-        with patch("brain.engine.mutator._run_tests", return_value=False):
+        with patch("brain.engine.mutator._run_tests", return_value=(False, "mocked failure")):
             result = request_evolution("delta", "def run(): pass", "tests", [], species_dir=sd, registry_path=rp)
         assert result.success is False
         assert not (sd / "delta.py").exists()

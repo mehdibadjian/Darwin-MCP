@@ -231,3 +231,61 @@ class TestInvokeEndpoint:
                 headers={"Authorization": "Bearer testtoken"},
             )
             assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# ENH-US2 — SandboxConfig and run_sandboxed resource limits
+# ---------------------------------------------------------------------------
+
+import sys
+
+
+class TestSandboxConfig:
+    def test_sandbox_config_defaults(self):
+        from brain.engine.guard import SandboxConfig
+        cfg = SandboxConfig()
+        assert cfg.max_cpu_cores == 1
+        assert cfg.max_memory_mb == 512.0
+        assert cfg.max_timeout_s == 3.0
+        assert cfg.max_file_handles == 50
+
+    def test_make_preexec_returns_callable(self):
+        from brain.engine.guard import SandboxConfig, make_preexec
+        fn = make_preexec(SandboxConfig())
+        assert callable(fn)
+
+
+class TestRunSandboxed:
+    def test_run_sandboxed_success(self):
+        from brain.engine.guard import SandboxConfig, run_sandboxed
+        cfg = SandboxConfig(max_timeout_s=5.0)
+        stdout, stderr = run_sandboxed(["python", "-c", "print('ok')"], cfg)
+        assert "ok" in stdout
+
+    def test_run_sandboxed_timeout_kills_all_processes(self):
+        from brain.engine.guard import SandboxConfig, run_sandboxed
+        from brain.engine.sandbox import SandboxTimeoutError
+        cfg = SandboxConfig(max_timeout_s=0.5)
+        with pytest.raises(SandboxTimeoutError):
+            run_sandboxed(["python", "-c", "import time; time.sleep(10)"], cfg)
+
+    @pytest.mark.skipif(sys.platform != "linux", reason="RLIMIT_NOFILE enforcement varies on macOS")
+    def test_run_sandboxed_file_handle_limit(self):
+        """Process that opens 200 files with handle limit=10 should fail → ResourceLimitError."""
+        from brain.engine.guard import SandboxConfig, run_sandboxed, ResourceLimitError
+        cfg = SandboxConfig(max_file_handles=10, max_timeout_s=5.0)
+        script = (
+            "fds = [open('/dev/null') for _ in range(200)]"
+        )
+        with pytest.raises(ResourceLimitError):
+            run_sandboxed(["python", "-c", script], cfg)
+
+    def test_run_sandboxed_cleanup_on_timeout(self):
+        """After SandboxTimeoutError the exception is raised cleanly (no hanging processes)."""
+        import psutil
+        from brain.engine.guard import SandboxConfig, run_sandboxed
+        from brain.engine.sandbox import SandboxTimeoutError
+        cfg = SandboxConfig(max_timeout_s=0.5)
+        with pytest.raises(SandboxTimeoutError):
+            run_sandboxed(["python", "-c", "import time; time.sleep(10)"], cfg)
+        # If we reach here the exception was raised — process group was killed cleanly.

@@ -1,3 +1,3 @@
 [submodule "memory"]
 	path = memory
-	url = ./memory
+	url = https://github.com/mehdibadjian/Darwin-MCP-Memory.git

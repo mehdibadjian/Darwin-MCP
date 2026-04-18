@@ -140,9 +140,18 @@ async def evolve_endpoint(request: Request) -> Response:
             content={"status": "error", "message": "name, code, and tests are required"},
         )
 
+    memory_dir = Path(__file__).resolve().parent.parent.parent / "memory"
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
-        None, lambda: request_evolution(name=name, code=code, tests=tests, requirements=requirements)
+        None,
+        lambda: request_evolution(
+            name=name,
+            code=code,
+            tests=tests,
+            requirements=requirements,
+            git_commit=True,
+            memory_dir=str(memory_dir),
+        ),
     )
     if result.success:
         return JSONResponse(status_code=200, content={"status": "success", **result.to_dict()})

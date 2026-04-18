@@ -100,13 +100,16 @@ def discover_species(
 
     for py_file in species_dir.glob("*.py"):
         name = py_file.stem
+        existing = registry["skills"].get(name, {})
         registry["skills"][name] = {
             "path": str(py_file),
             "entry_point": name,
-            "runtime": "python3",
-            "dependencies": [],
-            "evolved_at": None,
-            "status": "active",
+            "runtime": existing.get("runtime", "python3"),
+            "dependencies": existing.get("dependencies", []),
+            "evolved_at": existing.get("evolved_at"),
+            "status": existing.get("status", "active"),
+            **({k: v for k, v in existing.items() if k not in
+                ("path", "entry_point", "runtime", "dependencies", "evolved_at", "status")}),
         }
 
     write_registry(registry, registry_path)

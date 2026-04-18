@@ -55,28 +55,69 @@ def _reload_client():
     return TestClient(mod.app, raise_server_exceptions=True)
 
 
+def _first_sse_event(client, headers):
+    """GET /sse and return (status_code, first_data_payload).
+
+    Patches asyncio.wait_for in sse_server to raise CancelledError immediately.
+    The generator catches CancelledError and exits cleanly after the tool_list
+    event, so client.get() returns without hanging.
+    """
+    import asyncio as _asyncio
+    import brain.bridge.sse_server as _mod
+
+    async def _raise_cancelled(coro, *args, **kwargs):
+        coro.close()  # prevent "coroutine was never awaited" ResourceWarning
+        raise _asyncio.CancelledError()
+
+    with patch.object(_mod.asyncio, "wait_for", _raise_cancelled):
+        response = client.get("/sse", headers=headers)
+
+    for line in response.text.splitlines():
+        if line.startswith("data:"):
+            return response.status_code, json.loads(line[len("data: "):])
+    return response.status_code, None
+
+
+def _sse_status(client, headers):
+    """Return only the HTTP status code for a (typically rejected) SSE request.
+
+    For 401 cases the generator never runs, so no patch is needed; we patch
+    anyway to keep the helper symmetric and safe for any future code path.
+    """
+    import asyncio as _asyncio
+    import brain.bridge.sse_server as _mod
+
+    async def _raise_cancelled(coro, *args, **kwargs):
+        coro.close()  # prevent "coroutine was never awaited" ResourceWarning
+        raise _asyncio.CancelledError()
+
+    with patch.object(_mod.asyncio, "wait_for", _raise_cancelled):
+        response = client.get("/sse", headers=headers)
+    return response.status_code
+
+
 # ── US-1: Bearer Token Authentication ─────────────────────────────────────────
 
 def test_valid_token_accepted():
     """US-1 AC1: valid Bearer token → 200."""
     client = _get_client()
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY):
-        response = client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
-    assert response.status_code == 200
+        status, _ = _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
+    assert status == 200
 
 
 def test_invalid_token_rejected():
     """US-1 AC2: wrong token → 401."""
     client = _get_client()
-    response = client.get("/sse", headers={"Authorization": "Bearer wrong-token"})
-    assert response.status_code == 401
+    status = _sse_status(client, {"Authorization": "Bearer wrong-token"})
+    assert status == 401
 
 
 def test_missing_auth_header_rejected():
     """US-1 AC3: no Authorization header → 401."""
     client = _get_client()
-    response = client.get("/sse")
-    assert response.status_code == 401
+    status = _sse_status(client, {})
+    assert status == 401
 
 
 # ── US-2: Constant-Time Token Comparison ──────────────────────────────────────
@@ -112,11 +153,8 @@ def test_tool_list_contains_all_registry_skills():
     """US-5 AC1: all non-Toxic registry entries appear in the SSE response."""
     client = _get_client()
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY):
-        response = client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
-    assert response.status_code == 200
-    body = response.text
-    data_line = next(line for line in body.splitlines() if line.startswith("data:"))
-    payload = json.loads(data_line[len("data: "):])
+        status, payload = _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
+    assert status == 200
     assert payload["type"] == "tool_list"
     assert "hello_world" in payload["tools"]
     assert "another_skill" in payload["tools"]
@@ -126,10 +164,7 @@ def test_toxic_skill_excluded():
     """US-5 AC2: skill with status=Toxic is excluded from tool list."""
     client = _get_client()
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY):
-        response = client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
-    body = response.text
-    data_line = next(line for line in body.splitlines() if line.startswith("data:"))
-    payload = json.loads(data_line[len("data: "):])
+        _, payload = _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
     assert "bad_skill" not in payload["tools"]
 
 
@@ -139,9 +174,9 @@ def test_tool_list_delivered_quickly():
     client = _get_client()
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY):
         start = time.monotonic()
-        response = client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
+        status, payload = _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
         elapsed = time.monotonic() - start
-    assert response.status_code == 200
+    assert status == 200
     assert elapsed < 2.0
 
 
@@ -151,10 +186,7 @@ def test_only_registry_skills_served():
     """US-21 AC1: filesystem-only species not in registry are absent from list."""
     client = _get_client()
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY):
-        response = client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
-    body = response.text
-    data_line = next(line for line in body.splitlines() if line.startswith("data:"))
-    payload = json.loads(data_line[len("data: "):])
+        _, payload = _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
     assert set(payload["tools"].keys()) == {"hello_world", "another_skill"}
 
 
@@ -164,7 +196,7 @@ def test_registry_is_sole_state_source():
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY), \
          patch("os.scandir") as mock_scan, \
          patch("os.listdir") as mock_list:
-        client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
+        _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
     mock_scan.assert_not_called()
     mock_list.assert_not_called()
 
@@ -173,10 +205,7 @@ def test_entry_point_from_registry():
     """US-21 AC3: entry_point field from registry is preserved in tool list."""
     client = _get_client()
     with patch("brain.bridge.sse_server.read_registry", return_value=SAMPLE_REGISTRY):
-        response = client.get("/sse", headers={"Authorization": f"Bearer {VALID_TOKEN}"})
-    body = response.text
-    data_line = next(line for line in body.splitlines() if line.startswith("data:"))
-    payload = json.loads(data_line[len("data: "):])
+        _, payload = _first_sse_event(client, {"Authorization": f"Bearer {VALID_TOKEN}"})
     assert payload["tools"]["hello_world"]["entry_point"] == "memory.species.hello_world.run"
 
 

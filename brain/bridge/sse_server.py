@@ -1,8 +1,9 @@
-"""SSE Bridge server — US-1, US-2, US-5, US-21, US-32.
+"""SSE Bridge server — US-1, US-2, US-5, US-21, US-28, US-29, US-32.
 
 Serves the MCP tool list over Server-Sent Events with Bearer token auth.
 All operational state is derived exclusively from registry.json.
 """
+import asyncio
 import hmac
 import json
 import os
@@ -14,6 +15,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 
 from brain.utils.registry import discover_species, init_registry, read_registry
+from brain.watcher.hot_reload import (
+    flush_queued_notifications,
+    register_sse_callback,
+    start_watcher,
+    unregister_sse_callback,
+)
 
 # Token is always sourced from the environment — never hardcoded.
 MCP_BEARER_TOKEN: str = os.environ.get("MCP_BEARER_TOKEN", "")
@@ -41,6 +48,7 @@ def _startup() -> None:
     init_registry()
     discover_species()
     cleanup_stale_sandboxes()
+    start_watcher()
 
 
 app = FastAPI(on_startup=[_startup])
@@ -48,21 +56,43 @@ app = FastAPI(on_startup=[_startup])
 
 @app.get("/sse")
 async def sse_endpoint(request: Request) -> Response:
-    """Stream the tool list as a single SSE event after auth check."""
+    """Stream tool list and list_changed notifications over SSE after auth check."""
     auth = request.headers.get("Authorization")
     if not verify_token(auth):
         return Response(status_code=401)
 
-    registry = read_registry()
-    tools = {
-        name: entry
-        for name, entry in registry["skills"].items()
-        if entry.get("status") != "Toxic"
-    }
-
     async def event_stream():
-        data = json.dumps({"type": "tool_list", "tools": tools})
-        yield f"data: {data}\n\n"
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_event_loop()
+
+        def on_notification(notif: dict) -> None:
+            try:
+                loop.call_soon_threadsafe(queue.put_nowait, notif)
+            except Exception:
+                pass
+
+        register_sse_callback(on_notification)
+        flush_queued_notifications(on_notification)
+
+        try:
+            registry = read_registry()
+            tools = {
+                name: entry
+                for name, entry in registry["skills"].items()
+                if entry.get("status") != "Toxic"
+            }
+            yield f"data: {json.dumps({'type': 'tool_list', 'tools': tools})}\n\n"
+
+            while True:
+                try:
+                    notif = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {json.dumps(notif)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass  # client disconnected or test teardown — exit cleanly
+        finally:
+            unregister_sse_callback(on_notification)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

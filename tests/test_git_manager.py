@@ -1,5 +1,6 @@
-"""Tests for brain/utils/git_manager.py — US-13, US-14, US-15, US-16."""
+"""Tests for brain/utils/git_manager.py — US-13, US-14, US-15, US-16, ENH-US8."""
 import subprocess
+import threading
 from pathlib import Path
 from unittest.mock import call, patch, MagicMock
 
@@ -9,7 +10,10 @@ from brain.utils.git_manager import (
     GitError,
     PushRejectedError,
     RebaseError,
+    VaultNotFoundError,
     commit_and_push,
+    resolve_vault,
+    invalidate_vault_cache,
 )
 
 MEMORY_DIR = Path("/fake/memory")
@@ -168,3 +172,109 @@ def test_rebase_error_includes_git_stderr():
         with pytest.raises(RebaseError) as exc_info:
             commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR)
     assert "fatal: rebase conflict detail here" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# ENH-US8 — Dynamic Git Submodule Mounting
+# ---------------------------------------------------------------------------
+
+def test_resolve_vault_none_returns_memory_dir(tmp_path):
+    """vault_id=None → returns memory_dir itself (must exist)."""
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    result = resolve_vault(None, memory_dir=memory_dir)
+    assert result == memory_dir
+
+
+def test_resolve_vault_valid_id(tmp_path):
+    """resolve_vault('web-dev-vault', memory_dir) → memory_dir/submodules/web-dev-vault."""
+    memory_dir = tmp_path / "memory"
+    vault_path = memory_dir / "submodules" / "web-dev-vault"
+    vault_path.mkdir(parents=True)
+    invalidate_vault_cache()
+    result = resolve_vault("web-dev-vault", memory_dir=memory_dir)
+    assert result == vault_path
+
+
+def test_resolve_vault_invalid_id_raises(tmp_path):
+    """Path doesn't exist → VaultNotFoundError."""
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    invalidate_vault_cache()
+    with pytest.raises(VaultNotFoundError, match="web-dev-vault"):
+        resolve_vault("web-dev-vault", memory_dir=memory_dir)
+
+
+def test_resolve_vault_caches_result(tmp_path):
+    """Second call with same vault_id returns cached Path without extra filesystem stat."""
+    memory_dir = tmp_path / "memory"
+    vault_path = memory_dir / "submodules" / "my-vault"
+    vault_path.mkdir(parents=True)
+    invalidate_vault_cache()
+
+    first = resolve_vault("my-vault", memory_dir=memory_dir)
+    # Remove the directory — if cache works, second call must NOT raise
+    vault_path.rmdir()
+    second = resolve_vault("my-vault", memory_dir=memory_dir)
+    assert first == second
+
+
+def test_invalidate_vault_cache_clears_entry(tmp_path):
+    """After invalidate, next call re-resolves from filesystem."""
+    memory_dir = tmp_path / "memory"
+    vault_path = memory_dir / "submodules" / "my-vault"
+    vault_path.mkdir(parents=True)
+    invalidate_vault_cache()
+
+    resolve_vault("my-vault", memory_dir=memory_dir)
+    # Remove dir and invalidate — next call must raise because path gone
+    vault_path.rmdir()
+    invalidate_vault_cache("my-vault")
+    with pytest.raises(VaultNotFoundError):
+        resolve_vault("my-vault", memory_dir=memory_dir)
+
+
+def test_commit_and_push_uses_vault_path(tmp_path):
+    """commit_and_push with vault_id uses resolved submodule path as cwd."""
+    memory_dir = tmp_path / "memory"
+    vault_path = memory_dir / "submodules" / "web-dev-vault"
+    vault_path.mkdir(parents=True)
+    invalidate_vault_cache()
+
+    ok = _make_result(0)
+    with patch("subprocess.run", return_value=ok) as mock_run:
+        commit_and_push("mypkg", 1, memory_dir=memory_dir, vault_id="web-dev-vault")
+
+    cwds = [c[1]["cwd"] for c in mock_run.call_args_list]
+    assert all(cwd == str(vault_path) for cwd in cwds)
+
+
+def test_concurrent_vaults_isolated(tmp_path):
+    """Two threads using different vault_ids commit to their own paths without interference."""
+    memory_dir = tmp_path / "memory"
+    vault_a = memory_dir / "submodules" / "vault-a"
+    vault_b = memory_dir / "submodules" / "vault-b"
+    vault_a.mkdir(parents=True)
+    vault_b.mkdir(parents=True)
+    invalidate_vault_cache()
+
+    recorded = {"a": [], "b": []}
+    ok = _make_result(0)
+
+    def run_a():
+        with patch("subprocess.run", return_value=ok) as mock_run:
+            commit_and_push("pkg", 1, memory_dir=memory_dir, vault_id="vault-a")
+            recorded["a"] = [c[1]["cwd"] for c in mock_run.call_args_list]
+
+    def run_b():
+        with patch("subprocess.run", return_value=ok) as mock_run:
+            commit_and_push("pkg", 1, memory_dir=memory_dir, vault_id="vault-b")
+            recorded["b"] = [c[1]["cwd"] for c in mock_run.call_args_list]
+
+    t1 = threading.Thread(target=run_a)
+    t2 = threading.Thread(target=run_b)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+
+    assert all(cwd == str(vault_a) for cwd in recorded["a"])
+    assert all(cwd == str(vault_b) for cwd in recorded["b"])

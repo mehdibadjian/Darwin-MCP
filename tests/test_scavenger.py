@@ -163,3 +163,100 @@ def test_fetch_registry_missing_content_field():
         scavenger = Scavenger()
         with pytest.raises(ScavengerError):
             scavenger.fetch_registry()
+
+
+# ---------------------------------------------------------------------------
+# ENH-US4: generate_wrapper and commit_wrapper tests
+# ---------------------------------------------------------------------------
+
+_SAMPLE_REPO_URL = "https://github.com/example/mcp-weather"
+_SAMPLE_README_TEXT = "# Weather MCP Server\n\nProvides real-time weather data.\n"
+
+
+def test_generate_wrapper_returns_python_string():
+    """AC1: generate_wrapper returns a string with run() and repo_url."""
+    scavenger = Scavenger()
+    wrapper = scavenger.generate_wrapper("weather", _SAMPLE_REPO_URL, _SAMPLE_README_TEXT)
+    assert isinstance(wrapper, str)
+    assert "def run(" in wrapper
+    assert _SAMPLE_REPO_URL in wrapper
+    assert "weather" in wrapper
+
+
+def test_generate_wrapper_includes_provenance():
+    """AC2: wrapper string contains repo_url and a generated_at timestamp."""
+    scavenger = Scavenger()
+    wrapper = scavenger.generate_wrapper("weather", _SAMPLE_REPO_URL, _SAMPLE_README_TEXT)
+    assert _SAMPLE_REPO_URL in wrapper
+    assert "generated_at" in wrapper or "Generated:" in wrapper
+
+
+def test_generate_wrapper_includes_error_handling():
+    """AC3: wrapper string contains try/except and logger usage."""
+    scavenger = Scavenger()
+    wrapper = scavenger.generate_wrapper("weather", _SAMPLE_REPO_URL, _SAMPLE_README_TEXT)
+    assert "try" in wrapper or "except" in wrapper
+    assert "logger" in wrapper
+
+
+def test_commit_wrapper_writes_file(tmp_path):
+    """AC1/2: commit_wrapper writes {name}.py into species_dir."""
+    registry_file = tmp_path / "registry.json"
+    from brain.utils.registry import write_registry
+    write_registry({"organism_version": "1.0.0", "last_mutation": None, "skills": {}}, registry_path=registry_file)
+
+    scavenger = Scavenger()
+    wrapper_code = scavenger.generate_wrapper("weather", _SAMPLE_REPO_URL, _SAMPLE_README_TEXT)
+    scavenger.commit_wrapper(
+        "weather",
+        _SAMPLE_REPO_URL,
+        wrapper_code,
+        species_dir=tmp_path,
+        registry_path=registry_file,
+    )
+    assert (tmp_path / "weather.py").exists()
+    assert "def run(" in (tmp_path / "weather.py").read_text()
+
+
+def test_commit_wrapper_registers_with_external_source(tmp_path):
+    """AC2: Registry entry has source='external' and repo_url set."""
+    registry_file = tmp_path / "registry.json"
+    from brain.utils.registry import write_registry, read_registry
+    write_registry({"organism_version": "1.0.0", "last_mutation": None, "skills": {}}, registry_path=registry_file)
+
+    scavenger = Scavenger()
+    wrapper_code = scavenger.generate_wrapper("weather", _SAMPLE_REPO_URL, _SAMPLE_README_TEXT)
+    scavenger.commit_wrapper(
+        "weather",
+        _SAMPLE_REPO_URL,
+        wrapper_code,
+        species_dir=tmp_path,
+        registry_path=registry_file,
+    )
+    registry = read_registry(registry_file)
+    entry = registry["skills"].get("weather")
+    assert entry is not None
+    assert entry.get("source") == "external"
+    assert entry.get("repo_url") == _SAMPLE_REPO_URL
+
+
+def test_commit_wrapper_provenance_metadata(tmp_path):
+    """AC2: Registry entry has generated_at field (ISO8601)."""
+    registry_file = tmp_path / "registry.json"
+    from brain.utils.registry import write_registry, read_registry
+    write_registry({"organism_version": "1.0.0", "last_mutation": None, "skills": {}}, registry_path=registry_file)
+
+    scavenger = Scavenger()
+    wrapper_code = scavenger.generate_wrapper("weather", _SAMPLE_REPO_URL, _SAMPLE_README_TEXT)
+    scavenger.commit_wrapper(
+        "weather",
+        _SAMPLE_REPO_URL,
+        wrapper_code,
+        species_dir=tmp_path,
+        registry_path=registry_file,
+    )
+    registry = read_registry(registry_file)
+    entry = registry["skills"]["weather"]
+    assert "generated_at" in entry
+    assert isinstance(entry["generated_at"], str)
+    assert len(entry["generated_at"]) > 10  # not empty, looks like ISO8601

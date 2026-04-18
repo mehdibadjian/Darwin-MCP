@@ -4,14 +4,16 @@ Fetches and parses the official MCP Server Registry from GitHub,
 enabling discovery of available open-source MCP servers.
 """
 import base64
+import datetime
 import json
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from brain.utils.web_fetch import fetch_url
+from brain.utils.registry import read_registry, write_registry, init_registry
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,104 @@ class Scavenger:
     def list_servers(self) -> List[Dict]:
         """Return all servers with name, repo_url, readme_excerpt."""
         return self.fetch_registry()
+
+    def generate_wrapper(self, name: str, repo_url: str, readme_text: str) -> str:
+        """Generate a Python wrapper species string for an external MCP server.
+
+        Returns Python source code as a string.
+        The wrapper includes: docstring with provenance, run(input_data) function,
+        logging, error handling, and a comment noting external API translation.
+        """
+        generated_at = datetime.datetime.utcnow().isoformat()
+        code = f'''\
+"""
+External MCP wrapper: {name}
+Source: {repo_url}
+Generated: {generated_at}
+generated_at: {generated_at}
+"""
+import logging
+
+logger = logging.getLogger(__name__)
+
+# External API: {repo_url}
+
+
+def run(input_data: dict) -> dict:
+    """Invoke the external MCP server tool and map response to internal format.
+
+    Translates input_data to the {name} external API and maps the response
+    back to the Darwin-MCP internal species format.
+    """
+    try:
+        logger.info("Invoking external wrapper '{name}' with input: %s", input_data)
+        # TODO: replace with actual HTTP call to {repo_url}
+        result = {{
+            "status": "ok",
+            "source": "external",
+            "species": "{name}",
+            "repo_url": "{repo_url}",
+            "output": input_data,
+        }}
+        logger.debug("External wrapper '{name}' response: %s", result)
+        return result
+    except Exception as exc:
+        logger.error("External wrapper '{name}' failed: %s", exc)
+        return {{"status": "error", "error": str(exc)}}
+'''
+        return code
+
+    def commit_wrapper(
+        self,
+        name: str,
+        repo_url: str,
+        wrapper_code: str,
+        species_dir=None,
+        registry_path=None,
+    ) -> dict:
+        """Write wrapper_code to species_dir/{name}.py and register in registry.
+
+        Adds to registry with:
+          source="external"
+          repo_url=repo_url
+          generated_at=ISO8601 timestamp
+          status="active"
+
+        Returns updated registry entry dict.
+        """
+        if species_dir is None:
+            species_dir = Path(__file__).resolve().parent.parent.parent / "memory" / "species"
+        species_dir = Path(species_dir)
+        species_dir.mkdir(parents=True, exist_ok=True)
+
+        species_file = species_dir / f"{name}.py"
+        species_file.write_text(wrapper_code, encoding="utf-8")
+        logger.info("Wrote wrapper species '%s' to %s", name, species_file)
+
+        registry_path = Path(registry_path) if registry_path is not None else None
+        init_registry(registry_path)
+        registry = read_registry(registry_path)
+
+        generated_at = datetime.datetime.utcnow().isoformat()
+        existing = registry["skills"].get(name, {})
+        registry["skills"][name] = {
+            "path": str(species_file),
+            "entry_point": name,
+            "runtime": existing.get("runtime", "python3"),
+            "dependencies": existing.get("dependencies", []),
+            "evolved_at": existing.get("evolved_at"),
+            "status": "active",
+            "source": "external",
+            "repo_url": repo_url,
+            "generated_at": generated_at,
+            "last_used_at": existing.get("last_used_at"),
+            "total_calls": existing.get("total_calls", 0),
+            "success_count": existing.get("success_count", 0),
+            "failure_count": existing.get("failure_count", 0),
+        }
+        write_registry(registry, registry_path)
+        logger.info("Registered external wrapper '%s' in registry", name)
+        return registry["skills"][name]
 
 
 # ------------------------------------------------------------------

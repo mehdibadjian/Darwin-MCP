@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from brain.engine.mutator import request_evolution
 from brain.utils.registry import discover_species, init_registry, read_registry
-from brain.utils.web_fetch import fetch_url, fetch_urls
+from brain.utils.web_fetch import fetch_url, fetch_urls, search_web
 from brain.watcher.hot_reload import (
     flush_queued_notifications,
     register_sse_callback,
@@ -161,10 +161,12 @@ async def evolve_endpoint(request: Request) -> Response:
 
 @app.post("/search")
 async def search_endpoint(request: Request) -> Response:
-    """Fetch one or more URLs and return stripped plain-text content.
+    """Fetch URLs or run a web search query.
 
-    Body: {"urls": ["https://..."]}  — up to 5 URLs per request.
-    Lets skills and AI callers pull live documentation at request time.
+    Modes:
+      {"urls": ["https://..."]}          — fetch specific URLs, return stripped text
+      {"query": "FPGA best practices"}   — DuckDuckGo search, return titles+snippets+urls
+      {"query": "...", "fetch": true}    — search then fetch top results, return full text
     """
     auth = request.headers.get("Authorization")
     if not verify_token(auth):
@@ -175,11 +177,42 @@ async def search_endpoint(request: Request) -> Response:
     except Exception:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid JSON"})
 
-    urls = body.get("urls", [])
-    if not urls or not isinstance(urls, list):
-        return JSONResponse(status_code=422, content={"status": "error", "message": "'urls' list is required"})
-
-    urls = urls[:5]  # cap at 5 to avoid abuse
     loop = asyncio.get_event_loop()
-    results = await loop.run_in_executor(None, lambda: fetch_urls(urls))
-    return JSONResponse(status_code=200, content={"status": "ok", "results": results})
+
+    # Mode 1: fetch explicit URLs
+    if "urls" in body:
+        urls = body["urls"]
+        if not isinstance(urls, list) or not urls:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "'urls' must be a non-empty list"})
+        results = await loop.run_in_executor(None, lambda: fetch_urls(urls[:5]))
+        return JSONResponse(status_code=200, content={"status": "ok", "mode": "fetch", "results": results})
+
+    # Mode 2: web search (optionally followed by fetch)
+    if "query" in body:
+        query = body["query"].strip()
+        if not query:
+            return JSONResponse(status_code=422, content={"status": "error", "message": "'query' must not be empty"})
+        do_fetch = body.get("fetch", False)
+        max_results = min(int(body.get("max_results", 5)), 10)
+
+        search_results = await loop.run_in_executor(
+            None, lambda: search_web(query, max_results=max_results)
+        )
+
+        if do_fetch:
+            urls = [r["url"] for r in search_results if r.get("url")][:3]
+            pages = await loop.run_in_executor(None, lambda: fetch_urls(urls))
+            # Merge snippet + fetched text
+            for sr in search_results:
+                match = next((p for p in pages if p["url"] == sr.get("url")), None)
+                if match and match.get("status") == "ok":
+                    sr["text"] = match["text"]
+
+        return JSONResponse(status_code=200, content={
+            "status": "ok",
+            "mode": "search+fetch" if do_fetch else "search",
+            "query": query,
+            "results": search_results,
+        })
+
+    return JSONResponse(status_code=422, content={"status": "error", "message": "Provide 'urls' or 'query'"})

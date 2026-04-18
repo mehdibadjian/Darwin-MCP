@@ -1,15 +1,18 @@
 """Web fetch utility for the Darwin-God-MCP brain.
 
 Fetches a URL and returns plain text, stripping HTML tags.
+Also provides search_web() using DuckDuckGo HTML (no API key required).
 Used by skills that need live documentation at runtime and by the /search endpoint.
 """
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Optional
 
 _USER_AGENT = "Mozilla/5.0 (compatible; DarwinMCP/1.0; +https://github.com/darwin-god-mcp)"
 _DEFAULT_TIMEOUT = 10
+_DDG_URL = "https://html.duckduckgo.com/html/"
 
 
 def fetch_url(url: str, timeout: int = _DEFAULT_TIMEOUT) -> dict:
@@ -36,16 +39,55 @@ def fetch_urls(urls: list, timeout: int = _DEFAULT_TIMEOUT) -> list:
     return [fetch_url(url, timeout=timeout) for url in urls]
 
 
+def search_web(query: str, max_results: int = 5, timeout: int = _DEFAULT_TIMEOUT) -> list:
+    """Search the web via DuckDuckGo HTML (no API key required).
+
+    Returns a list of {"title": str, "url": str, "snippet": str} dicts.
+    """
+    try:
+        data = urllib.parse.urlencode({"q": query, "kl": "us-en"}).encode()
+        req = urllib.request.Request(
+            _DDG_URL,
+            data=data,
+            headers={
+                "User-Agent": _USER_AGENT,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        return [{"title": "search error", "url": "", "snippet": str(e)}]
+
+    results = []
+    # Extract result blocks: each result has a link + snippet in DDG HTML
+    blocks = re.findall(
+        r'class="result__title".*?<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>.*?'
+        r'class="result__snippet"[^>]*>(.*?)</div>',
+        html,
+        re.DOTALL,
+    )
+    for url, title, snippet in blocks[:max_results]:
+        # DDG wraps URLs in redirects — extract the actual URL
+        real_url = url
+        uddg_match = re.search(r"uddg=([^&]+)", url)
+        if uddg_match:
+            real_url = urllib.parse.unquote(uddg_match.group(1))
+        results.append({
+            "title": _strip_html(title).strip(),
+            "url": real_url,
+            "snippet": _strip_html(snippet).strip()[:300],
+        })
+
+    return results
+
+
 def _strip_html(html: str) -> str:
     """Remove HTML tags, collapse whitespace, decode common entities."""
-    # Remove script/style blocks entirely
     html = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-    # Remove all remaining tags
     html = re.sub(r"<[^>]+>", " ", html)
-    # Decode common entities
     for entity, char in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
                           ("&quot;", '"'), ("&#39;", "'"), ("&nbsp;", " ")]:
         html = html.replace(entity, char)
-    # Collapse whitespace
     html = re.sub(r"\s+", " ", html).strip()
     return html

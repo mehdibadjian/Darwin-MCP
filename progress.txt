@@ -51,3 +51,24 @@ US-22, US-23 [DONE] — brain/engine/deps.py created (update_requirements, rebui
 - tests/test_sse_server.py: updated to use streaming helpers (asyncio.wait_for mock) so the infinite keepalive loop does not hang the test suite
 - Commit: d4d38da
 - Fast suite: 89 passed (sandbox/deps/mutator/resource_guard excluded — require virtualenv ops)
+
+## 2026-04-18 — Enhancement Backlog Complete
+
+**Branch:** main
+**Stories:** ENH-US1 through ENH-US10 (all 10 stories, 58 story points)
+**Commits:** 0063f52, bcf50cd, a130c01, 9eb44ce, a0351bd, 91cdc09, 2a4a247, a6abe04, dd58616, c7ad706
+
+### Completed Stories
+- [x] ENH-US1: Validate Mutation in Isolated Sandbox — sandbox.run_isolated() with SIGKILL on timeout
+- [x] ENH-US2: Configure Cgroup Resource Limits — SandboxConfig + run_sandboxed() in guard.py
+- [x] ENH-US3: Query Official MCP Server Registry — brain/engine/scavenger.py Scavenger class
+- [x] ENH-US4: Auto-Generate Wrapper Species — generate_wrapper() + commit_wrapper() in scavenger.py
+- [x] ENH-US5: Registry Senescence Fields — last_used_at, total_calls, success/failure counts
+- [x] ENH-US6: Skill Pruning Policy — brain/engine/pruner.py with archive + dry-run support
+- [x] ENH-US7: X-Vault-Repo Header Routing — resolve_vault_path() in sse_server.py
+- [x] ENH-US8: Dynamic Git Submodule Mounting — resolve_vault() + VaultNotFoundError in git_manager.py
+- [x] ENH-US9: System Vitals Metrics — brain/engine/vitals.py with psutil
+- [x] ENH-US10: Vitals MCP Tool — get_droplet_vitals registered in registry, wired to /tools invoke
+
+**Tests:** 171 passed, 1 skipped (Linux-only RLIMIT_NOFILE test)
+**Fix:** test_resource_guard.py SSE test patched with asyncio.wait_for CancelledError pattern

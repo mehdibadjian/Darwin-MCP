@@ -64,24 +64,30 @@ Before writing any code:
 
 ### Step 3 — Implement with TDD
 
-Follow the Red → Green → Refactor cycle:
+Follow the Red → Green → Refactor cycle. **Each phase is mandatory and must be executed as a separate bash step. You may NOT write implementation code before confirming the Red phase.**
 
-**Red — Write Failing Tests First**
-- Create or update the test file at `tests/test_<component>.py`.
-- Write one test per acceptance criterion. Use the criterion text as the docstring.
-- Confirm tests fail before writing implementation code:
-  ```bash
-  python -m pytest tests/test_<component>.py -v --tb=short 2>&1 | tail -20
-  ```
+**🔴 Red — Write Failing Tests First (REQUIRED GATE)**
+1. Create or update the test file at `tests/test_<component>.py`.
+2. Write one test per acceptance criterion. Use the criterion text as the docstring.
+3. **Run the tests NOW and confirm they fail** — do not proceed until you see failures:
+   ```bash
+   python -m pytest tests/test_<component>.py -v --tb=short 2>&1 | tail -30
+   ```
+4. ⛔ **STOP if all tests pass at this point** — it means the tests are not actually testing new behaviour. Rewrite them so they fail against the current (unmodified) codebase.
 
-**Green — Minimum Implementation**
-- Write only the code needed to make the failing tests pass.
+**🟢 Green — Minimum Implementation**
+- Only now write the implementation code needed to make the failing tests pass.
 - Follow the file paths from the System Components table (e.g., `brain/engine/mutator.py`).
 - Do not refactor unrelated code. Do not add features beyond the acceptance criteria.
+- Re-run tests to confirm they now pass:
+  ```bash
+  python -m pytest tests/test_<component>.py -v --tb=short 2>&1 | tail -30
+  ```
 
-**Refactor**
+**🔵 Refactor**
 - Clean up while keeping all tests green.
 - Remove dead code, fix naming, ensure consistency with existing patterns.
+- Re-run tests one final time to confirm nothing broke.
 
 ### Step 4 — Verify (All Checks Must Pass)
 

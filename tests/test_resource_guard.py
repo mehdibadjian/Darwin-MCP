@@ -146,23 +146,28 @@ class TestMarkToxic:
 
 class TestSSEToolListExcludesToxic:
     def test_toxic_skill_excluded_from_tool_list(self, tmp_path):
-        reg_path = _make_registry(tmp_path, {
-            "good_skill": {"status": "active"},
-            "bad_skill": {"status": "Toxic"},
-        })
+        import asyncio as _asyncio
+        import brain.bridge.sse_server as _mod
+
+        async def _raise_cancelled(coro, *args, **kwargs):
+            coro.close()
+            raise _asyncio.CancelledError()
+
+        registry_data = {
+            "organism_version": "1.0.0",
+            "last_mutation": None,
+            "skills": {
+                "good_skill": {"status": "active"},
+                "bad_skill": {"status": "Toxic"},
+            },
+        }
 
         with patch.dict(os.environ, {"MCP_BEARER_TOKEN": "testtoken"}), \
-             patch("brain.bridge.sse_server.read_registry", return_value={
-                 "organism_version": "1.0.0",
-                 "last_mutation": None,
-                 "skills": {
-                     "good_skill": {"status": "active"},
-                     "bad_skill": {"status": "Toxic"},
-                 },
-             }), \
+             patch("brain.bridge.sse_server.read_registry", return_value=registry_data), \
              patch("brain.bridge.sse_server.init_registry"), \
              patch("brain.bridge.sse_server.discover_species"), \
-             patch("brain.bridge.sse_server.cleanup_stale_sandboxes"):
+             patch("brain.bridge.sse_server.cleanup_stale_sandboxes"), \
+             patch.object(_mod.asyncio, "wait_for", _raise_cancelled):
             from fastapi.testclient import TestClient
             from brain.bridge.sse_server import app
 

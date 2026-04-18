@@ -1,0 +1,53 @@
+US-30, US-31: darwin.service created with restart policy. Tests: 8/8 passed. Commit: 393f173
+
+## Sprint 1 - US-17 & US-18 completed
+Date: 2026-04-18T12:15:41Z
+Branch: sprint-1-stories
+Commit: 56ffb5b
+Files: brain/__init__.py, brain/utils/__init__.py, brain/utils/registry.py, tests/test_registry.py, memory/dna/
+Tests: 18 passed (10 new for US-17/US-18)
+
+## Sprint 1 — SSE Bridge (2026-04-18)
+US-1, US-2, US-5, US-21, US-32 — DONE
+Commit: 56fd8ee
+Files: brain/bridge/__init__.py, brain/bridge/sse_server.py, tests/test_sse_server.py
+Tests: 14 new (32 total) — all passing
+2026-04-18T12:22:23Z [US-3, US-4] Species discovery scan implemented. Commit: ed708da. 6 new tests passing (38 total).
+
+## Sprint 2 — Mutation Engine Core (2026-04-18T12:22:47Z)
+Commit: ffb800a | Branch: sprint-1-stories
+Files: brain/engine/__init__.py, brain/engine/mutator.py, tests/test_mutator.py
+Tests: 14 new (52 total passing)
+Stories: US-6 (request_evolution API), US-7 (input validation), US-12 (species file promotion), US-19 (registry entry), US-20 (atomic writes)
+2026-04-18T12:25:39Z [US-8, US-9] DONE — brain/engine/sandbox.py + tests/test_sandbox.py — 9/9 tests pass — commit 5a464a5
+
+## Sprint 3 — US-10 + US-11 (2026-04-18T12:28:57Z)
+- Created brain/engine/pytest_runner.py: PytestResult + run_pytest(), MAX_STDERR_CHARS=10000, exit-code-5 pass, BSL-3 format_error()
+- Updated brain/engine/mutator.py: _run_tests() now delegates to run_pytest; request_evolution accepts python_bin param
+- Added tests/test_pytest_runner.py: 9 tests, all passing
+- Commit: 05fc2da
+
+US-22, US-23 [DONE] — brain/engine/deps.py created (update_requirements, rebuild_env). mutator.py wired to track deps and rebuild env post-mutation. 8 tests in tests/test_deps.py. All 78 tests passing. Commit: 6b149e6
+\n## US-24 — Circuit Breaker Recursion Depth\n- brain/engine/guard.py created: RecursionLimitError, open_github_issue, check_recursion_depth\n- brain/engine/mutator.py: added recursion_depth=0 param + circuit breaker check\n- tests/test_guard.py: 9 tests, all passing\n- Full suite: 99 passed
+
+## Sprint 4 — US-13, US-14, US-15, US-16 (Git Manager)
+- brain/utils/git_manager.py — commit_and_push with push-rejection/rebase handling
+- brain/engine/mutator.py — wired git_commit=False param (Step 7)
+- tests/test_git_manager.py — 12 tests, all green (99 total passing)
+- Commit: 81a8af4
+
+## US-27 — BSL-3 Contextualized Error Reporting [DONE]
+- brain/engine/pytest_runner.py: format_error() enhanced — empty output fallback, no bare 'Test failed.' messages
+- brain/engine/sandbox.py: install() error includes bracketed package list [pkg1, pkg2]
+- tests/test_error_reporting.py: 9 new tests — all passing
+- Commit: 4c6a025
+
+2026-04-18T12:37:46Z | US-25, US-26 | Resource monitor SIGKILL + Toxic flag | commit 18a6cfb | 9 new tests, 117 total passing
+
+## Sprint 5 — US-28, US-29 (Hot Reload) [2026-04-18]
+- brain/watcher/hot_reload.py: SpeciesEventHandler, start_watcher (daemon thread, auto-restart), register/unregister_sse_callback, _emit_list_changed, flush_queued_notifications
+- brain/bridge/sse_server.py: start_watcher() at startup; asyncio.Queue per SSE connection; 30s keepalive; CancelledError handled for clean teardown; US-28/US-29 integrated
+- tests/test_hot_reload.py: 12 new tests (file events, list_changed routing, watcher restart) — all passing
+- tests/test_sse_server.py: updated to use streaming helpers (asyncio.wait_for mock) so the infinite keepalive loop does not hang the test suite
+- Commit: d4d38da
+- Fast suite: 89 passed (sandbox/deps/mutator/resource_guard excluded — require virtualenv ops)

@@ -65,3 +65,22 @@ async def sse_endpoint(request: Request) -> Response:
         yield f"data: {data}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/tools/{name}/invoke")
+async def invoke_tool(name: str, request: Request) -> Response:
+    """Return 403 if the requested skill is Toxic, 200 if active, 404 if unknown."""
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    registry = read_registry()
+    skill = registry.get("skills", {}).get(name)
+    if skill is None:
+        return Response(status_code=404, content=f"Tool '{name}' not found")
+    if skill.get("status") == "Toxic":
+        return Response(
+            status_code=403,
+            content=f"Tool '{name}' is quarantined (Toxic). Manual review required.",
+        )
+    return Response(content=json.dumps({"name": name, "status": "ok"}), media_type="application/json")

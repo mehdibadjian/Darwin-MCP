@@ -52,8 +52,9 @@ class Sandbox:
         )
         if result.returncode != 0:
             self.cleanup()
+            pkg_list = ", ".join(requirements)
             raise SandboxError(
-                f"pip install failed for {requirements}: {result.stderr}"
+                f"pip install failed for [{pkg_list}]: {result.stderr}"
             )
 
     def cleanup(self):

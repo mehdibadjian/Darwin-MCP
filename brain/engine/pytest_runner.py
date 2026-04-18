@@ -14,10 +14,17 @@ class PytestResult:
         self.truncated = truncated
 
     def format_error(self):
-        """BSL-3: structured error with truncation notice when applicable."""
-        output = self.stderr
+        """BSL-3: structured error — always includes file, line, assertion context."""
+        if not self.stderr and not self.stdout:
+            return "pytest produced no output (possible syntax error or import failure)"
+
+        output = self.stderr or self.stdout
         if self.truncated:
             output = f"[TRUNCATED — showing last {MAX_STDERR_CHARS} chars]\n" + output
+
+        if output.strip() in ("", "Test failed.", "Tests failed."):
+            return "pytest exited non-zero but produced no diagnostic output"
+
         return output
 
 

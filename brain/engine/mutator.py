@@ -8,7 +8,7 @@ import sys
 import datetime
 from pathlib import Path
 
-from brain.utils.registry import read_registry, write_registry, init_registry, REGISTRY_PATH
+from brain.utils.registry import read_registry, write_registry, init_registry, record_invocation, REGISTRY_PATH
 from brain.engine.deps import update_requirements, rebuild_env
 
 SPECIES_DIR = Path(__file__).resolve().parent.parent.parent / "memory" / "species"
@@ -137,6 +137,13 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
             commit_and_push(name, version, memory_dir=memory_dir)
         except Exception as e:
             logging.warning(f"git push failed for {name} v{version}: {e}")
+
+    # Step 8: Record invocation stats (ENH-US5) — only when memory_dir is set
+    if memory_dir is not None:
+        try:
+            record_invocation(name, success=True, registry_path=registry_path)
+        except Exception as e:
+            logging.warning(f"record_invocation failed for {name}: {e}")
 
     return MutationResult(
         success=True,

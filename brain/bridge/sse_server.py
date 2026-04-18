@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from brain.engine.mutator import request_evolution
 from brain.utils.registry import discover_species, init_registry, read_registry
+from brain.utils.web_fetch import fetch_url, fetch_urls
 from brain.watcher.hot_reload import (
     flush_queued_notifications,
     register_sse_callback,
@@ -156,3 +157,29 @@ async def evolve_endpoint(request: Request) -> Response:
     if result.success:
         return JSONResponse(status_code=200, content={"status": "success", **result.to_dict()})
     return JSONResponse(status_code=422, content={"status": "error", **result.to_dict()})
+
+
+@app.post("/search")
+async def search_endpoint(request: Request) -> Response:
+    """Fetch one or more URLs and return stripped plain-text content.
+
+    Body: {"urls": ["https://..."]}  — up to 5 URLs per request.
+    Lets skills and AI callers pull live documentation at request time.
+    """
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid JSON"})
+
+    urls = body.get("urls", [])
+    if not urls or not isinstance(urls, list):
+        return JSONResponse(status_code=422, content={"status": "error", "message": "'urls' list is required"})
+
+    urls = urls[:5]  # cap at 5 to avoid abuse
+    loop = asyncio.get_event_loop()
+    results = await loop.run_in_executor(None, lambda: fetch_urls(urls))
+    return JSONResponse(status_code=200, content={"status": "ok", "results": results})

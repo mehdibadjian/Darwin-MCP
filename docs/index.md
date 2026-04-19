@@ -1,6 +1,8 @@
 # Darwin-MCP Documentation
 
-Complete guide to understanding, deploying, and extending the mcp-evolution-core Brain.
+> **🚧 BETA** — Active development. APIs may change between minor versions.
+
+Complete guide to understanding, deploying, and extending the mcp-evolution-core Brain — including the new **Cloud-less AI** mode that runs Gemma 2b on your phone over NordVPN Meshnet.
 
 ## Quick Start
 
@@ -31,7 +33,7 @@ Recipes for specific tasks. Find what you need quickly.
   - Rollback a skill version
   - Handle merge conflicts
   - Troubleshoot resource limits
-- **[Meshnet Setup](how-to/meshnet-setup.md)** — Connect Gemma 2b on your phone to Darwin-MCP over NordVPN Meshnet
+- **[Meshnet Setup](how-to/meshnet-setup.md)** ✨ — Connect Gemma 2b on your phone to Darwin-MCP over NordVPN Meshnet
 
 ### 📋 Reference
 
@@ -39,7 +41,7 @@ Deep technical documentation. Contracts, schemas, architecture.
 
 - **[Technical Manifesto](reference/technical-manifesto.md)** — Complete API contracts, Git state machine, sandbox isolation, BSL biosafety layers
 - **[Agile Backlog](reference/agile-backlog.md)** — Epics, user stories, acceptance criteria, sprint plans
-- **[Cloud-less AI Plan](reference/cloudless-ai-plan.md)** — Gemma 2b × Darwin-MCP architecture, tool routing, self-healing wrapper, Meshnet handover
+- **[Cloud-less AI Plan](reference/cloudless-ai-plan.md)** ✨ — Gemma 2b × Darwin-MCP: tool routing, self-healing wrapper, Flash Summarizer, Meshnet handover
 
 ---
 
@@ -63,6 +65,9 @@ Deep technical documentation. Contracts, schemas, architecture.
 ### 💬 I need help with my skill
 → [How-To: Debugging](how-to/common-tasks.md#debug-a-failed-mutation)
 
+### 🤝 I want to contribute
+→ [Contributing Guidelines](../README.md#contributing)
+
 ---
 
 ## Key Concepts at a Glance
@@ -76,6 +81,25 @@ Deep technical documentation. Contracts, schemas, architecture.
 | **Circuit Breaker** | Safety limits (recursion, CPU, memory) | [How-To: Troubleshoot](how-to/common-tasks.md#troubleshoot-resource-limits) |
 | **Brain** | The stateless SSE server | [Manifesto](reference/technical-manifesto.md) |
 | **Memory** | Git submodule storing species and registry | [Getting Started](tutorials/getting-started.md#step-2-initialize-the-memory-submodule) |
+| **Tool Router** ✨ | Top-3 tool filter for small models | [Cloud-less AI Plan](reference/cloudless-ai-plan.md) |
+| **Flash Summarizer** ✨ | Compresses web pages to ≤400 tokens | [Cloud-less AI Plan](reference/cloudless-ai-plan.md) |
+| **JSON Validator** ✨ | Self-healing malformed tool calls | [Cloud-less AI Plan](reference/cloudless-ai-plan.md) |
+
+---
+
+## Beta Status
+
+Darwin-MCP is in **active beta**. The following areas are stable vs. evolving:
+
+| Area | Stability |
+|------|-----------|
+| `/sse`, `/evolve`, `/search` endpoints | ✅ Stable |
+| `registry.json` schema | ✅ Stable |
+| Mutation pipeline | ✅ Stable |
+| Dynamic Tool Router | 🚧 Beta |
+| Cloud-less / Meshnet mode | 🚧 Beta |
+| Multi-tenant vault routing | 🚧 Beta |
+| `/health` endpoint | ⏳ Planned |
 
 ---
 
@@ -91,22 +115,24 @@ Deep technical documentation. Contracts, schemas, architecture.
 
 **Deploying to production?** → [Deploy to Droplet](how-to/common-tasks.md#deploy-the-brain-to-production)
 
+**Gemma outputs bad JSON?** → [Meshnet Setup: Troubleshooting](how-to/meshnet-setup.md#troubleshooting)
+
 ---
 
 ## Repository Structure
 
 ```
 docs/
-├── index.md                    ← You are here
+├── index.md                      ← You are here
 ├── tutorials/
-│   └── getting-started.md      ← Setup, create first skill
+│   └── getting-started.md        ← Setup, create first skill
 ├── how-to/
-│   ├── common-tasks.md         ← Practical recipes
-│   └── meshnet-setup.md        ← Gemma 2b + NordVPN Meshnet
+│   ├── common-tasks.md           ← Practical recipes
+│   └── meshnet-setup.md          ← Gemma 2b + NordVPN Meshnet ✨
 └── reference/
-    ├── technical-manifesto.md  ← API contracts
-    ├── agile-backlog.md        ← Sprint planning
-    └── cloudless-ai-plan.md    ← Gemma 2b × Darwin-MCP architecture
+    ├── technical-manifesto.md    ← API contracts
+    ├── agile-backlog.md          ← Sprint planning
+    └── cloudless-ai-plan.md      ← Gemma 2b × Darwin-MCP architecture ✨
 ```
 
 ---
@@ -114,8 +140,8 @@ docs/
 ## Additional Resources
 
 - **[Main README](../README.md)** — What is Darwin-MCP? Quick start.
-- **[GitHub Issues](https://github.com/yourusername/mcp-evolution-core/issues)** — Bug reports and feature requests.
-- **[Discussions](https://github.com/yourusername/mcp-evolution-core/discussions)** — Q&A and community.
+- **[GitHub Issues](https://github.com/mehdibadjian/Darwin-MCP/issues)** — Bug reports and feature requests.
+- **[Discussions](https://github.com/mehdibadjian/Darwin-MCP/discussions)** — Q&A and community.
 
 ---
 

@@ -1,0 +1,7 @@
+{
+  "base_url": "http://100.x.x.x:8080",
+  "model": "gemma-2b",
+  "bearer_token_env": "MCP_BEARER_TOKEN",
+  "top_n_tools": 3,
+  "notes": "Replace 100.x.x.x with your PC's NordVPN Meshnet IP. The bearer token is read from the MCP_BEARER_TOKEN environment variable on Darwin — never hardcode it here."
+}

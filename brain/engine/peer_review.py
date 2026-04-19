@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -93,56 +94,37 @@ def _build_prompt(request: PeerReviewRequest) -> str:
 
 
 def _call_secondary_model(request: PeerReviewRequest) -> PeerReviewResult:
-    """Call the secondary LLM model configured in brain/config/meshnet.json.
+    """Call the local Ollama model (gemma:2b) configured in brain/config/meshnet.json.
 
-    Falls back to a stub (reviewed=False) when no secondary model is configured,
-    so the system degrades gracefully on first-run environments.
+    Falls back to a stub (reviewed=False) when Ollama is unavailable.
     """
-    config_path = (
-        Path(__file__).resolve().parent.parent.parent
-        / "brain" / "config" / "meshnet.json"
-    )
-
-    if not config_path.exists():
-        logger.warning(
-            "No meshnet.json found — peer review unavailable. "
-            "Configure brain/config/meshnet.json to enable the Council of Peers."
-        )
-        return PeerReviewResult(
-            reviewed=False,
-            fixed_code=None,
-            explanation="Secondary model not configured (meshnet.json missing)",
-        )
-
     try:
-        cfg = json.loads(config_path.read_text())
-        import urllib.request as _urllib_req
+        from brain.utils.ollama_client import chat as ollama_chat
 
         prompt = _build_prompt(request)
-        payload = json.dumps({
-            "model": cfg.get("model", "gpt-4o"),
-            "messages": [{"role": "user", "content": prompt}],
-        }).encode()
+        raw = ollama_chat(prompt, timeout=60)
+        if not raw:
+            return PeerReviewResult(reviewed=False, fixed_code=None, explanation="Ollama returned empty response")
 
-        req = _urllib_req.Request(
-            cfg["base_url"].rstrip("/") + "/chat/completions",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {cfg.get('api_key', '')}",
-            },
-            method="POST",
-        )
-        with _urllib_req.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
+        # Try to parse JSON from the response
+        try:
+            # Extract JSON block if wrapped in markdown
+            json_match = re.search(r'\{.*"fixed_code".*\}', raw, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+            else:
+                parsed = json.loads(raw)
+            return PeerReviewResult(
+                reviewed=True,
+                fixed_code=parsed.get("fixed_code"),
+                explanation=parsed.get("explanation"),
+            )
+        except json.JSONDecodeError:
+            # Ollama returned prose — extract code block if present
+            code_match = re.search(r'```python\n(.*?)```', raw, re.DOTALL)
+            fixed_code = code_match.group(1).strip() if code_match else None
+            return PeerReviewResult(reviewed=bool(fixed_code), fixed_code=fixed_code, explanation=raw[:200])
 
-        content = data["choices"][0]["message"]["content"]
-        parsed = json.loads(content)
-        return PeerReviewResult(
-            reviewed=True,
-            fixed_code=parsed.get("fixed_code"),
-            explanation=parsed.get("explanation"),
-        )
     except Exception as exc:
         logger.error(f"Peer review call failed for {request.skill_name}: {exc}")
         raise

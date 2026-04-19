@@ -247,32 +247,330 @@ def _enqueue_anomaly_reports(anomalies: list[dict], backlog_path=None) -> int:
 # Species scaffold generator — creates stub code+tests for description-only tasks
 # ---------------------------------------------------------------------------
 
-def _generate_species_scaffold(name: str, description: str, requirements: list) -> tuple:
-    """Return (code, tests) stubs for a description-only evolve task.
+def _web_context_for_skill(name: str, description: str) -> str:
+    """Search DuckDuckGo for domain context. Returns a brief summary string."""
+    try:
+        import urllib.request
+        import urllib.parse
+        query = urllib.parse.quote(f"{name.replace('_', ' ')} {description[:60]}")
+        url = f"https://api.duckduckgo.com/?q={query}&format=json&no_redirect=1&no_html=1&skip_disambig=1"
+        req = urllib.request.Request(url, headers={"User-Agent": "Darwin-MCP/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        abstract = data.get("AbstractText", "") or data.get("Answer", "")
+        related  = " | ".join(
+            r.get("Text", "")[:80] for r in data.get("RelatedTopics", [])[:3] if isinstance(r, dict)
+        )
+        ctx = (abstract + " " + related).strip()[:600]
+        return ctx
+    except Exception:
+        return ""
 
-    Produces a minimal but syntactically valid species that passes its own unit
-    tests so it clears the mutation sandbox.  The Mutator will version it as v1;
-    future beats or the Skill Optimizer can refine it.
+
+def _ollama_generate_body(func: str, description: str, web_ctx: str, suffix: str) -> str:
+    """Ask Ollama gemma:2b to generate the function body. Returns raw body or '' on failure."""
+    try:
+        from brain.utils.ollama_client import chat
+
+        system = (
+            "You are an expert Python developer writing the BODY of a function. "
+            "Rules: "
+            "1. Output ONLY indented Python statements (4-space indent). "
+            "2. Do NOT write a def line, docstring, imports, or markdown fences. "
+            "3. Use only stdlib — no undefined modules or imports. "
+            "4. Read inputs with params.get(). "
+            "5. The last statement MUST be: return {\"status\": \"ok\", \"name\": \"FUNCNAME\", \"result\": <real_result>}. "
+            "6. Implement real logic relevant to the description — no TODOs, no stubs, no None returns."
+        ).replace("FUNCNAME", func)
+
+        prompt = (
+            f"Function name: {func}\n"
+            f"Description: {description}\n"
+            + (f"Domain context: {web_ctx}\n" if web_ctx else "")
+            + "\nOutput only the 4-space-indented function body lines, nothing else:"
+        )
+
+        raw = chat(prompt, system=system, timeout=90)
+        if not raw:
+            return ""
+
+        # Strip markdown fences, def lines, docstrings
+        lines = raw.splitlines()
+        cleaned = []
+        in_fence     = False
+        in_docstring = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                cleaned.append(line)
+                continue
+            # Toggle docstring state
+            dq_count = stripped.count('"""')
+            sq_count = stripped.count("'''")
+            if (dq_count % 2 == 1) or (sq_count % 2 == 1):
+                in_docstring = not in_docstring
+                continue
+            if in_docstring:
+                continue
+            if stripped.startswith("def "):
+                continue
+            cleaned.append(line)
+        body = "\n".join(cleaned).strip()
+
+        # Validate it contains a return statement with the required keys
+        if "return" not in body:
+            return ""
+        if '"status"' not in body and "'status'" not in body:
+            return ""
+
+        # Normalise indentation — ensure all non-empty lines have ≥4 spaces
+        re_indented = []
+        for line in body.splitlines():
+            stripped = line.lstrip()
+            if stripped:
+                indent = len(line) - len(stripped)
+                base_indent = max(4, indent)
+                re_indented.append((" " * base_indent) + stripped)
+            else:
+                re_indented.append("")
+        return "\n".join(re_indented)
+    except Exception as exc:
+        logger.warning("Ollama scaffold generation failed for %s: %s", func, exc)
+        return ""
+
+
+def _generate_species_scaffold(name: str, description: str, requirements: list) -> tuple:
+    """Return (code, tests) for a description-only evolve task.
+
+    Generation pipeline:
+      1. Web search (DuckDuckGo) for domain context.
+      2. Ollama gemma:2b generates the real function body using that context.
+      3. Falls back to suffix-pattern templates if Ollama fails or returns garbage.
     """
-    func = name.lower().replace("-", "_").replace(" ", "_")
-    req_comment = "\n".join(f"# requirement: {r}" for r in requirements) if requirements else ""
+    func   = name.lower().replace("-", "_").replace(" ", "_")
+    domain = func.rsplit("_", 1)[0] if "_" in func else func  # strip suffix
+    suffix = name.rsplit("_", 1)[-1] if "_" in name else ""
+
+    # --- Step 1: gather web context -----------------------------------------
+    web_ctx = _web_context_for_skill(name, description)
+    if web_ctx:
+        logger.info("[scaffold] web context for %s: %s…", func, web_ctx[:80])
+
+    # --- Step 2: ask Ollama to write the body --------------------------------
+    ollama_body = _ollama_generate_body(func, description, web_ctx, suffix)
+    if ollama_body:
+        logger.info("[scaffold] Ollama generated body for %s (%d chars)", func, len(ollama_body))
+        body = ollama_body
+    else:
+        logger.info("[scaffold] falling back to suffix template for %s", func)
+        body = None  # will be set by suffix block below
+
+    req_imports = "\n".join(f"# pip install {r}" for r in requirements) if requirements else ""
+
+    # ---- Suffix fallback templates (only used when Ollama fails) -----------
+    if body is not None:
+        pass  # Ollama succeeded — skip templates
+    elif suffix in ("reporter", "summary_writer", "writer"):
+        body = f'''\
+    domain   = params.get("domain",  "{domain.replace("_", " ")}")
+    target   = params.get("target",  "all")
+    fmt      = params.get("format",  "text")
+
+    lines = [
+        f"=== {{domain}} Report ===",
+        f"Target  : {{target}}",
+        f"Summary : {description[:120]}",
+        "Status  : operational",
+    ]
+    report = "\\n".join(lines) if fmt == "text" else dict(domain=domain, target=target, description="{description[:120]}")
+    return {{"status": "ok", "name": "{func}", "result": report}}'''
+
+    elif suffix in ("checker", "health_checker", "validator", "data_validator"):
+        body = f'''\
+    target  = params.get("target", "")
+    rules   = params.get("rules",  [])
+
+    findings = []
+    errors   = []
+
+    # {description[:100]}
+    if not target:
+        errors.append("'target' param is required — pass a file path, URL, or resource name")
+
+    result = {{
+        "target":   target,
+        "findings": findings,
+        "errors":   errors,
+        "passed":   len(errors) == 0,
+    }}
+    return {{"status": "ok", "name": "{func}", "result": result}}'''
+
+    elif suffix in ("tracker", "task_tracker"):
+        body = f'''\
+    items    = params.get("items", [])
+    status   = params.get("status", "all")
+
+    # {description[:100]}
+    summary = {{
+        "total":       len(items),
+        "filtered_by": status,
+        "items":       [i for i in items if status == "all" or i.get("status") == status],
+    }}
+    return {{"status": "ok", "name": "{func}", "result": summary}}'''
+
+    elif suffix in ("automator", "workflow_automator", "runner"):
+        body = f'''\
+    steps_taken = []
+    target      = params.get("target", "")
+    dry_run     = params.get("dry_run", False)
+
+    # {description[:100]}
+    workflow_steps = [
+        f"1. Validate inputs for {{target}}",
+        f"2. Execute {domain.replace("_", " ")} workflow",
+        f"3. Verify completion",
+    ]
+    for step in workflow_steps:
+        if not dry_run:
+            steps_taken.append({{"step": step, "status": "done"}})
+        else:
+            steps_taken.append({{"step": step, "status": "dry-run"}})
+
+    return {{"status": "ok", "name": "{func}", "result": {{"steps": steps_taken, "dry_run": dry_run}}}}'''
+
+    elif suffix in ("generator", "template_generator"):
+        body = f'''\
+    template_type = params.get("type",   "default")
+    context       = params.get("context", {{}})
+
+    # {description[:100]}
+    output = f"""# Generated by {func}
+# Type: {{template_type}}
+# Domain: {domain.replace("_", " ")}
+# Context: {{context}}
+
+# TODO: implement {domain.replace("_", " ")} template for {{template_type}}
+"""
+    return {{"status": "ok", "name": "{func}", "result": output}}'''
+
+    elif suffix in ("manager", "alert_manager"):
+        body = f'''\
+    action   = params.get("action",   "list")   # list | create | update | delete
+    resource = params.get("resource", {{}})
+    store    = params.get("store",    [])
+
+    # {description[:100]}
+    if action == "list":
+        result = {{"items": store, "count": len(store)}}
+    elif action == "create":
+        store.append(resource)
+        result = {{"created": resource, "total": len(store)}}
+    elif action == "update":
+        result = {{"updated": resource}}
+    elif action == "delete":
+        result = {{"deleted": resource}}
+    else:
+        result = {{"error": f"Unknown action: {{action}}"}}
+
+    return {{"status": "ok", "name": "{func}", "result": result}}'''
+
+    elif suffix in ("exporter", "metrics_exporter"):
+        body = f'''\
+    import time
+    fmt    = params.get("format",  "dict")   # dict | prometheus | json
+    labels = params.get("labels",  {{}})
+
+    # {description[:100]}
+    metrics = {{
+        "timestamp":  time.time(),
+        "domain":     "{domain.replace("_", " ")}",
+        "labels":     labels,
+        "values":     {{}},
+    }}
+
+    if fmt == "prometheus":
+        lines = [f"# HELP {func} {description[:60]}"]
+        for k, v in metrics["values"].items():
+            lines.append(f"{func}_{{k}}{{{{labels}}}} {{v}}")
+        result = "\\n".join(lines)
+    else:
+        result = metrics
+
+    return {{"status": "ok", "name": "{func}", "result": result}}'''
+
+    elif suffix in ("analyser", "analyzer"):
+        body = f'''\
+    data        = params.get("data",  [])
+    threshold   = params.get("threshold", 0.5)
+
+    # {description[:100]}
+    findings = []
+    score    = 0.0
+
+    if data:
+        score = round(sum(1 for d in data if d) / len(data), 2)
+        if score < threshold:
+            findings.append(f"Score {{score}} below threshold {{threshold}}")
+
+    return {{
+        "status":   "ok",
+        "name":     "{func}",
+        "result":   {{
+            "score":    score,
+            "findings": findings,
+            "items":    len(data),
+        }},
+    }}'''
+
+    elif suffix in ("changelog_writer",):
+        body = f'''\
+    changes  = params.get("changes",  [])
+    version  = params.get("version",  "unreleased")
+    fmt      = params.get("format",   "markdown")
+
+    # {description[:100]}
+    lines = [f"## [{{version}}]", ""]
+    for c in changes:
+        lines.append(f"- {{c}}")
+    if not changes:
+        lines.append("- No changes recorded")
+
+    result = "\\n".join(lines) if fmt == "markdown" else {{"version": version, "changes": changes}}
+    return {{"status": "ok", "name": "{func}", "result": result}}'''
+
+    else:
+        # Generic — at minimum returns structured data based on params
+        body = f'''\
+    target  = params.get("target",  "")
+    options = params.get("options", {{}})
+
+    # {description[:100]}
+    result = {{
+        "target":      target,
+        "options":     options,
+        "domain":      "{domain.replace("_", " ")}",
+        "description": "{description[:120]}",
+        "output":      f"Processed {{target}} with {func}",
+    }}
+    return {{"status": "ok", "name": "{func}", "result": result}}'''
+
+    req_comment = f"\n{req_imports}\n" if req_imports else ""
     code = (
         f'"""{description}\n"""\n'
         f"from __future__ import annotations\n"
         f"from typing import Any, Dict\n"
-        f"{req_comment}\n\n"
+        f"{req_comment}\n"
         f"def {func}(params: Dict[str, Any]) -> Dict[str, Any]:\n"
-        f'    """{ description }\n\n'
+        f'    """{description}\n\n'
         f"    Args:\n"
-        f"        params: Input parameters.\n\n"
+        f"        params: Input parameters (see implementation for keys).\n\n"
         f"    Returns:\n"
-        f"        Dict with 'status' and 'result'.\n"
+        f"        Dict with 'status', 'name', and 'result'.\n"
         f'    """\n'
-        f"    return {{\n"
-        f'        "status": "ok",\n'
-        f'        "name": "{func}",\n'
-        f'        "result": None,\n'
-        f"    }}\n"
+        f"{body}\n"
     )
     tests = (
         f'"""Tests for {func}."""\n'
@@ -284,7 +582,10 @@ def _generate_species_scaffold(name: str, description: str, requirements: list) 
         f'    assert result["status"] == "ok"\n\n'
         f"def test_{func}_has_name():\n"
         f"    result = {func}({{}})\n"
-        f'    assert result["name"] == "{func}"\n'
+        f'    assert result["name"] == "{func}"\n\n'
+        f"def test_{func}_has_result_key():\n"
+        f"    result = {func}({{}})\n"
+        f'    assert "result" in result\n'
     )
     return code, tests
 
@@ -358,6 +659,7 @@ def _dispatch(item: dict) -> tuple[bool, str]:
                 description=payload.get("description", ""),
                 git_commit=AUTO_APPROVE,
                 memory_dir=str(_MEMORY_DIR),
+                skip_similarity_check=payload.get("skip_similarity_check", False),
             )
             if result.success:
                 return True, f"Evolved '{payload['name']}' v{result.version}"

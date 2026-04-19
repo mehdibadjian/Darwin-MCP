@@ -97,7 +97,7 @@ def test_push_rejection_triggers_rebase():
     with patch("subprocess.run", side_effect=[ok, ok, ok, ok, ok, rejected, ok, ok]) as mock_run:
         commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR)
     cmds = [c[0][0] for c in mock_run.call_args_list]
-    assert ["git", "pull", "--rebase", "origin", "main"] in cmds
+    assert ["git", "pull", "--rebase", "--autostash", "origin", "main"] in cmds
 
 
 def test_rebase_success_retries_push():
@@ -275,12 +275,12 @@ def test_preflight_checkout_main_is_second():
 
 
 def test_preflight_pull_rebase_is_third():
-    """git pull --rebase origin main must be the third command."""
+    """git pull --rebase --autostash origin main must be the third command."""
     ok = _make_result(0)
     with patch("subprocess.run", return_value=ok) as mock_run:
         commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR)
     third = mock_run.call_args_list[2][0][0]
-    assert third == ["git", "pull", "--rebase", "origin", "main"]
+    assert third == ["git", "pull", "--rebase", "--autostash", "origin", "main"]
 
 
 def test_preflight_fetch_failure_raises_git_error():

@@ -150,8 +150,10 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None, sync_parent=F
     if rc != 0:
         raise GitError(f"git checkout main failed: {stderr}")
 
-    # git pull --rebase origin main — merge remote changes before our commit
-    rc, stdout, stderr = _run_git(["pull", "--rebase", "origin", "main"], cwd=cwd)
+    # git pull --rebase --autostash origin main — stashes pending writes, rebases,
+    # then restores; prevents "unstaged changes" rejection when registry.json has
+    # already been written by the mutator before this preflight runs.
+    rc, stdout, stderr = _run_git(["pull", "--rebase", "--autostash", "origin", "main"], cwd=cwd)
     if rc != 0:
         _run_git(["rebase", "--abort"], cwd=cwd)
         files = re.findall(r"[\w/.-]+\.py", stderr)
@@ -180,9 +182,9 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None, sync_parent=F
             sync_submodule_pointer(cwd, brain_root=brain_root)
         return True, f"Pushed: {message}"
 
-    # Push rejected — try pull --rebase + retry
+    # Push rejected — try pull --rebase --autostash + retry
     rc_rebase, stdout_rebase, stderr_rebase = _run_git(
-        ["pull", "--rebase", "origin", "main"], cwd=cwd
+        ["pull", "--rebase", "--autostash", "origin", "main"], cwd=cwd
     )
     if rc_rebase != 0:
         _run_git(["rebase", "--abort"], cwd=cwd)

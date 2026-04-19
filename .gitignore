@@ -70,3 +70,7 @@ memory/dna/*.db
 .env.*
 !.env.example
 secrets.toml
+\n# Generated Intelligence Dashboard\nvitals_ui/
+
+# Generated Intelligence Dashboard
+vitals_ui/

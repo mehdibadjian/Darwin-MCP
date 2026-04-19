@@ -359,16 +359,27 @@ def _generate_species_scaffold(name: str, description: str, requirements: list) 
     if web_ctx:
         logger.info("[scaffold] web context for %s: %s…", func, web_ctx[:80])
 
+    req_imports = "\n".join(f"# pip install {r}" for r in requirements) if requirements else ""
+
     # --- Step 2: ask Ollama to write the body --------------------------------
     ollama_body = _ollama_generate_body(func, description, web_ctx, suffix)
     if ollama_body:
-        logger.info("[scaffold] Ollama generated body for %s (%d chars)", func, len(ollama_body))
-        body = ollama_body
+        # Syntax-check the full assembled code before accepting it
+        req_comment = f"\n{req_imports}\n" if req_imports else ""
+        probe = (
+            f'from __future__ import annotations\nfrom typing import Any, Dict\n{req_comment}\n'
+            f"def {func}(params: Dict[str, Any]) -> Dict[str, Any]:\n{ollama_body}\n"
+        )
+        try:
+            compile(probe, "<scaffold>", "exec")
+            logger.info("[scaffold] Ollama body syntax OK for %s (%d chars)", func, len(ollama_body))
+            body = ollama_body
+        except SyntaxError as e:
+            logger.warning("[scaffold] Ollama body syntax error for %s: %s — using suffix template", func, e)
+            body = None
     else:
-        logger.info("[scaffold] falling back to suffix template for %s", func)
-        body = None  # will be set by suffix block below
-
-    req_imports = "\n".join(f"# pip install {r}" for r in requirements) if requirements else ""
+        logger.info("[scaffold] Ollama returned empty — using suffix template for %s", func)
+        body = None
 
     # ---- Suffix fallback templates (only used when Ollama fails) -----------
     if body is not None:

@@ -85,6 +85,10 @@ def _run_git(args, cwd, timeout=30):
 def commit_and_push(name, version, memory_dir=None, vault_id=None):
     """Execute git add ., commit with 'evolution: {name} v{version}', push to origin main.
 
+    Pre-push preflight (US-H2): fetch → checkout main → pull --rebase, then
+    add → commit → push. This prevents Detached HEAD failures and merges any
+    concurrent remote changes before creating the new commit.
+
     If vault_id is provided, resolves vault path via resolve_vault().
     Otherwise uses memory_dir (backward compatible).
     Handles push rejection via pull --rebase + retry.
@@ -96,6 +100,30 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None):
         if memory_dir is None:
             memory_dir = Path(__file__).resolve().parent.parent.parent / "memory"
         cwd = Path(memory_dir)
+
+    # --- Pre-push preflight: sync with remote and land on main branch ---
+
+    # git fetch origin
+    rc, stdout, stderr = _run_git(["fetch", "origin"], cwd=cwd)
+    if rc != 0:
+        raise GitError(f"git fetch origin failed: {stderr}")
+
+    # git checkout main — resolves Detached HEAD
+    rc, stdout, stderr = _run_git(["checkout", "main"], cwd=cwd)
+    if rc != 0:
+        raise GitError(f"git checkout main failed: {stderr}")
+
+    # git pull --rebase origin main — merge remote changes before our commit
+    rc, stdout, stderr = _run_git(["pull", "--rebase", "origin", "main"], cwd=cwd)
+    if rc != 0:
+        _run_git(["rebase", "--abort"], cwd=cwd)
+        files = re.findall(r"[\w/.-]+\.py", stderr)
+        raise RebaseError(
+            f"rebase failed during pre-push preflight. "
+            f"Affected files: {files}. Git output: {stderr}"
+        )
+
+    # --- Stage, commit, push ---
 
     # git add .
     rc, stdout, stderr = _run_git(["add", "."], cwd=cwd)
@@ -113,12 +141,11 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None):
     if rc == 0:
         return True, f"Pushed: {message}"
 
-    # Push rejected — try pull --rebase
+    # Push rejected — try pull --rebase + retry
     rc_rebase, stdout_rebase, stderr_rebase = _run_git(
         ["pull", "--rebase", "origin", "main"], cwd=cwd
     )
     if rc_rebase != 0:
-        # Rebase failed — abort to leave repo in clean state
         _run_git(["rebase", "--abort"], cwd=cwd)
         files = re.findall(r"[\w/.-]+\.py", stderr_rebase)
         raise RebaseError(

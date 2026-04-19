@@ -2,12 +2,22 @@
 
 Provides bootstrap (init_registry), schema-validated reads (read_registry),
 and atomic writes (write_registry) for memory/dna/registry.json.
+
+All reads and writes are protected by an exclusive/shared fcntl file lock
+(registry.json.lock) to serialise concurrent mutations without data loss.
 """
+import contextlib
 import datetime
 import json
 import os
 from pathlib import Path
 from typing import Optional
+
+try:
+    import fcntl as _fcntl
+    _HAVE_FCNTL = True
+except ImportError:  # Windows
+    _HAVE_FCNTL = False
 
 # ---------------------------------------------------------------------------
 # Path resolution — no hardcoded absolute paths
@@ -24,6 +34,33 @@ REGISTRY_SCHEMA: dict = {
 }
 
 _REQUIRED_FIELDS = ("organism_version", "last_mutation", "skills")
+
+
+# ---------------------------------------------------------------------------
+# File locking — US-H1
+# ---------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def _registry_lock(path: Path, exclusive: bool = False):
+    """Acquire a shared (read) or exclusive (write) flock on *path*.lock.
+
+    Falls back to a no-op context manager on platforms that lack fcntl
+    (e.g., Windows) so the code runs everywhere.
+    """
+    if not _HAVE_FCNTL:
+        yield
+        return
+
+    lock_path = path.with_suffix(".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_flag = _fcntl.LOCK_EX if exclusive else _fcntl.LOCK_SH
+    with open(lock_path, "w") as _lf:
+        _fcntl.flock(_lf, lock_flag)
+        try:
+            yield
+        finally:
+            _fcntl.flock(_lf, _fcntl.LOCK_UN)
+
 
 SENESCENCE_DEFAULTS: dict = {
     "last_used_at": None,
@@ -57,11 +94,15 @@ def init_registry(registry_path: Optional[Path] = None) -> None:
 def read_registry(registry_path: Optional[Path] = None) -> dict:
     """Read registry.json, validate its schema, and return parsed data.
 
+    Acquires a shared file lock before reading so concurrent writes cannot
+    produce a torn read.
+
     Raises:
         SchemaError: if any required field is missing or has an invalid type.
     """
     path = Path(registry_path) if registry_path is not None else REGISTRY_PATH
-    data = json.loads(path.read_text(encoding="utf-8"))
+    with _registry_lock(path, exclusive=False):
+        data = json.loads(path.read_text(encoding="utf-8"))
 
     for field in _REQUIRED_FIELDS:
         if field not in data:
@@ -79,12 +120,17 @@ def read_registry(registry_path: Optional[Path] = None) -> dict:
 
 
 def write_registry(data: dict, registry_path: Optional[Path] = None) -> None:
-    """Atomically write *data* to registry.json (write to .tmp then os.replace)."""
+    """Atomically write *data* to registry.json (write to .tmp then os.replace).
+
+    Holds an exclusive file lock for the duration of the write so concurrent
+    reads and writes are serialised without data loss.
+    """
     path = Path(registry_path) if registry_path is not None else REGISTRY_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
+    with _registry_lock(path, exclusive=True):
+        tmp_path = path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
 
 
 def discover_species(

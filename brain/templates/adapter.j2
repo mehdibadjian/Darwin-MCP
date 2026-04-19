@@ -1,0 +1,52 @@
+"""
+External MCP wrapper: {{ name }}
+Source: {{ repo_url }}
+Generated: {{ generated_at }}
+generated_at: {{ generated_at }}
+
+This species wraps an external MCP server as a native Darwin-MCP skill.
+Adapter template: brain/templates/adapter.j2
+"""
+import logging
+
+logger = logging.getLogger(__name__)
+
+# External API endpoint: {{ repo_url }}
+
+
+def run(input_data: dict) -> dict:
+    """Invoke the external MCP server tool and map the response to internal format.
+
+    Translates *input_data* to the {{ name }} external API and maps the response
+    back to the Darwin-MCP internal species format.
+
+    Args:
+        input_data: Dict of tool parameters forwarded from the Host LLM.
+
+    Returns:
+        Dict with at minimum: {"status": "ok"|"error", "output": ...}
+    """
+    try:
+        logger.info("Invoking external wrapper '{{ name }}' with input: %s", input_data)
+
+        # TODO: replace the stub below with a real HTTP/CLI call to {{ repo_url }}
+        # Example for an HTTP-based MCP server:
+        #   import requests
+        #   resp = requests.post("{{ repo_url }}/tools/run", json=input_data, timeout=10)
+        #   resp.raise_for_status()
+        #   raw = resp.json()
+
+        result = {
+            "status": "ok",
+            "source": "external",
+            "species": "{{ name }}",
+            "repo_url": "{{ repo_url }}",
+            "output": input_data,
+        }
+
+        logger.debug("External wrapper '{{ name }}' response: %s", result)
+        return result
+
+    except Exception as exc:
+        logger.error("External wrapper '{{ name }}' failed: %s", exc)
+        return {"status": "error", "error": str(exc)}

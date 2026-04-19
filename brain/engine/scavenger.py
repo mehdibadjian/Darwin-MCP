@@ -18,8 +18,15 @@ from brain.utils.registry import read_registry, write_registry, init_registry
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "memory" / "temp"
+_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "adapter.j2"
 _GITHUB_API_BASE = "https://api.github.com"
 _RAW_CONTENT_BASE = "https://raw.githubusercontent.com"
+
+try:
+    from jinja2 import Template as _J2Template
+    _HAVE_JINJA2 = True
+except ImportError:
+    _HAVE_JINJA2 = False
 
 
 class ScavengerError(Exception):
@@ -142,11 +149,35 @@ class Scavenger:
     def generate_wrapper(self, name: str, repo_url: str, readme_text: str) -> str:
         """Generate a Python wrapper species string for an external MCP server.
 
+        Renders from brain/templates/adapter.j2 when Jinja2 is available;
+        falls back to string-format substitution otherwise (US-H4).
+
         Returns Python source code as a string.
-        The wrapper includes: docstring with provenance, run(input_data) function,
-        logging, error handling, and a comment noting external API translation.
         """
         generated_at = datetime.datetime.utcnow().isoformat()
+        ctx = {
+            "name": name,
+            "repo_url": repo_url,
+            "generated_at": generated_at,
+        }
+
+        if _HAVE_JINJA2 and _TEMPLATE_PATH.exists():
+            template_src = _TEMPLATE_PATH.read_text(encoding="utf-8")
+            code = _J2Template(template_src).render(**ctx)
+            logger.debug("Generated wrapper '%s' from Jinja2 template", name)
+            return code
+
+        # Fallback: use the template file with simple string replacement,
+        # or synthesise inline if the template file is unavailable.
+        if _TEMPLATE_PATH.exists():
+            template_src = _TEMPLATE_PATH.read_text(encoding="utf-8")
+            for key, value in ctx.items():
+                template_src = template_src.replace("{{ " + key + " }}", value)
+            logger.debug("Generated wrapper '%s' from template (string-replace fallback)", name)
+            return template_src
+
+        # Hard-coded fallback — Jinja2 absent and template file missing
+        logger.warning("adapter.j2 not found; using inline fallback for '%s'", name)
         code = f'''\
 """
 External MCP wrapper: {name}

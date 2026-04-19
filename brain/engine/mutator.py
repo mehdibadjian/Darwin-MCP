@@ -101,7 +101,8 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
 
     # Step 5: Atomically update registry
     init_registry(registry_path)
-    registry = read_registry(registry_path)
+    old_registry = read_registry(registry_path)
+    registry = {**old_registry, "skills": dict(old_registry.get("skills", {}))}
     version = _get_version(registry, name)
 
     entry = {
@@ -131,10 +132,24 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
             logging.error(f"Rebuild failed for {name}: {err}")
 
     # Step 7: Git commit + push (US-13–US-16)
+    # Registry is written before git add so the commit bundles both the species
+    # file and the updated registry.json atomically. On unrecoverable push
+    # failure, the registry is reverted to its pre-mutation snapshot to avoid
+    # creating a Ghost Skill (US-H3).
     if git_commit:
-        from brain.utils.git_manager import commit_and_push
+        from brain.utils.git_manager import commit_and_push, PushRejectedError, RebaseError
         try:
             commit_and_push(name, version, memory_dir=memory_dir)
+        except (PushRejectedError, RebaseError) as e:
+            logging.warning(f"git push failed for {name} v{version}, reverting registry: {e}")
+            try:
+                write_registry(old_registry, registry_path)
+            except Exception as revert_err:
+                logging.error(f"registry revert also failed for {name}: {revert_err}")
+            return MutationResult(
+                success=False,
+                error=f"Git push failed and registry was reverted: {e}",
+            )
         except Exception as e:
             logging.warning(f"git push failed for {name} v{version}: {e}")
 

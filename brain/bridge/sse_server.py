@@ -385,6 +385,42 @@ async def backlog_cancel(item_id: str, request: Request) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# Domain Scout endpoint — give Darwin a domain, it queues all missing skills
+# ---------------------------------------------------------------------------
+
+@app.post("/domain")
+async def domain_evolve(request: Request) -> Response:
+    """Enqueue all missing skills for a given domain.
+
+    Body: {"domain": str, "priority": int (1-5, optional), "dry_run": bool (optional)}
+    """
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid JSON"})
+
+    domain = body.get("domain", "").strip()
+    if not domain:
+        return JSONResponse(status_code=422, content={"status": "error", "message": "'domain' is required"})
+
+    try:
+        from memory.species.domain_scout import domain_scout, _DOMAIN_SKILLS
+        result = domain_scout({
+            "domain":   domain,
+            "priority": int(body.get("priority", 2)),
+            "dry_run":  bool(body.get("dry_run", False)),
+        })
+        result["available_domains"] = sorted(k for k in _DOMAIN_SKILLS if not k.startswith("_"))
+        return JSONResponse(status_code=200, content=result)
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(exc)})
+
+
+# ---------------------------------------------------------------------------
 # Heartbeat status endpoint
 # ---------------------------------------------------------------------------
 

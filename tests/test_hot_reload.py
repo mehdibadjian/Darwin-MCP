@@ -104,30 +104,30 @@ class TestListChangedNotifications:
             ev.src_path = str(tmp_path / "skill.py")
             ev.is_directory = False
             handler.on_created(ev)
-            cb.assert_called_once_with({"type": "list_changed"})
+            cb.assert_called_once_with(hr.MCP_LIST_CHANGED)
 
     def test_notification_queued_when_no_sse_connection(self):
         """With no active callbacks, notification lands in the queue."""
         hr._emit_list_changed()
         with hr._notification_lock:
-            assert hr._notification_queue == [{"type": "list_changed"}]
+            assert hr._notification_queue == [hr.MCP_LIST_CHANGED]
 
     def test_notification_sent_to_active_callback(self):
         """With an active callback, it is called directly and queue stays empty."""
         cb = MagicMock()
         hr.register_sse_callback(cb)
         hr._emit_list_changed()
-        cb.assert_called_once_with({"type": "list_changed"})
+        cb.assert_called_once_with(hr.MCP_LIST_CHANGED)
         with hr._notification_lock:
             assert hr._notification_queue == []
 
     def test_queued_notifications_flushed_on_connect(self):
         """flush_queued_notifications sends queued items and clears the queue."""
         with hr._notification_lock:
-            hr._notification_queue.append({"type": "list_changed"})
+            hr._notification_queue.append(hr.MCP_LIST_CHANGED)
         cb = MagicMock()
         hr.flush_queued_notifications(cb)
-        cb.assert_called_once_with({"type": "list_changed"})
+        cb.assert_called_once_with(hr.MCP_LIST_CHANGED)
         with hr._notification_lock:
             assert hr._notification_queue == []
 
@@ -137,6 +137,31 @@ class TestListChangedNotifications:
         assert cb in hr._active_sse_callbacks
         hr.unregister_sse_callback(cb)
         assert cb not in hr._active_sse_callbacks
+
+    # --- MCP protocol compliance ---
+
+    def test_notification_uses_official_mcp_method_field(self):
+        """Notification must use 'method' key per MCP spec, not legacy 'type'."""
+        cb = MagicMock()
+        hr.register_sse_callback(cb)
+        hr._emit_list_changed()
+        notif = cb.call_args[0][0]
+        assert "method" in notif, "MCP notifications must use 'method' key"
+        assert notif["method"] == "notifications/tools/list_changed"
+
+    def test_notification_includes_params_field(self):
+        """MCP notification must include 'params' dict (may be empty)."""
+        cb = MagicMock()
+        hr.register_sse_callback(cb)
+        hr._emit_list_changed()
+        notif = cb.call_args[0][0]
+        assert "params" in notif, "MCP notifications must include 'params'"
+        assert isinstance(notif["params"], dict)
+
+    def test_mcp_list_changed_constant_format(self):
+        """MCP_LIST_CHANGED constant must match the official MCP notification format."""
+        assert hr.MCP_LIST_CHANGED["method"] == "notifications/tools/list_changed"
+        assert hr.MCP_LIST_CHANGED["params"] == {}
 
 
 # ---------------------------------------------------------------------------

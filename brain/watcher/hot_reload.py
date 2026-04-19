@@ -10,6 +10,15 @@ from watchdog.events import FileSystemEventHandler
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Official MCP notification constant (jsonrpc-compatible)
+# ---------------------------------------------------------------------------
+
+MCP_LIST_CHANGED: dict = {
+    "method": "notifications/tools/list_changed",
+    "params": {},
+}
+
+# ---------------------------------------------------------------------------
 # SSE callback registry and notification queue (thread-safe)
 # ---------------------------------------------------------------------------
 
@@ -30,8 +39,12 @@ def unregister_sse_callback(callback) -> None:
 
 
 def _emit_list_changed() -> None:
-    """Push list_changed to all active SSE connections; queue if none exist."""
-    notification = {"type": "list_changed"}
+    """Push list_changed to all active SSE connections; queue if none exist.
+
+    Emits the official MCP notification format so that IDEs (Cursor, Claude
+    Desktop) automatically refresh their tool list without a reconnect.
+    """
+    notification = MCP_LIST_CHANGED
     if _active_sse_callbacks:
         for cb in list(_active_sse_callbacks):
             try:

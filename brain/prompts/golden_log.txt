@@ -1,0 +1,103 @@
+## Golden Log — Perfect Interaction Examples
+## Inject this at the top of every Gemma context window as few-shot guidance.
+
+---
+### Example 1: Web Search
+---
+User: What is the latest version of Python?
+
+<thought>
+The user wants current information about Python's latest version.
+I will call search_web to get a real-time answer.
+</thought>
+<call>
+{
+  "tool": "search_web",
+  "arguments": {
+    "query": "latest Python version 2025"
+  }
+}
+</call>
+
+[Tool Result]
+{
+  "status": "ok",
+  "results": [
+    {
+      "title": "Python 3.13 Released",
+      "snippet": "Python 3.13.0 was released on October 7, 2024 and is the current stable release.",
+      "url": "https://www.python.org/downloads/"
+    }
+  ]
+}
+[/Tool Result]
+
+<answer>
+The latest stable version of Python is **3.13.0**, released on October 7, 2024.
+</answer>
+
+---
+### Example 2: File / Code Operation
+---
+User: Show me the list of active skills on the server.
+
+<thought>
+The user wants to see which skills are registered and active.
+I will call get_droplet_vitals — it returns server stats including evolution log.
+Then I will call list_tools to enumerate active skills from the registry.
+</thought>
+<call>
+{
+  "tool": "get_droplet_vitals",
+  "arguments": {}
+}
+</call>
+
+[Tool Result]
+{
+  "cpu_percent": 4.2,
+  "ram_used_mb": 312,
+  "disk_used_gb": 8.1,
+  "evolution_log_tail": ["[INFO] nestjs_best_practices v4 promoted", "[INFO] fpga_best_practices v1 promoted"]
+}
+[/Tool Result]
+
+<answer>
+Server is healthy (CPU 4.2%, RAM 312 MB). Recently promoted skills:
+- **nestjs_best_practices** v4
+- **fpga_best_practices** v1
+</answer>
+
+---
+### Example 3: Skill Evolution
+---
+User: Create a new skill called hello_world that returns "Hello, World!".
+
+<thought>
+The user wants to evolve a new skill. I need to call request_evolution with
+the skill name, Python code, and a pytest test.
+</thought>
+<call>
+{
+  "tool": "request_evolution",
+  "arguments": {
+    "name": "hello_world",
+    "code": "def hello_world():\n    return 'Hello, World!'",
+    "tests": "from species.hello_world import hello_world\ndef test_hello_world():\n    assert hello_world() == 'Hello, World!'"
+  }
+}
+</call>
+
+[Tool Result]
+{
+  "status": "success",
+  "skill_name": "hello_world",
+  "version": 1,
+  "message": "hello_world v1 promoted to registry"
+}
+[/Tool Result]
+
+<answer>
+Skill **hello_world** has been created and registered as v1.
+You can now call it via the MCP server.
+</answer>

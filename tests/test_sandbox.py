@@ -196,3 +196,71 @@ def test_run_isolated_with_memory_limit(tmp_path):
             [sys.executable, "-c", "x = bytearray(500 * 1024 * 1024)"],
             memory_limit_bytes=limit,
         )
+
+
+# ---------------------------------------------------------------------------
+# Lysosome: purge_pip_cache() — runs `pip cache purge` to prevent /tmp bloat
+# ---------------------------------------------------------------------------
+
+def test_purge_pip_cache_runs_pip_cache_purge(tmp_path):
+    """purge_pip_cache() must invoke `pip cache purge` via subprocess."""
+    with patch("brain.engine.sandbox.subprocess.run", return_value=_ok_result()) as mock_run:
+        s = Sandbox(base_dir=tmp_path)
+        s.purge_pip_cache()
+        calls = mock_run.call_args_list
+        assert any("cache" in str(c) and "purge" in str(c) for c in calls), (
+            "purge_pip_cache must call 'pip cache purge'"
+        )
+
+
+def test_purge_pip_cache_uses_sandbox_pip(tmp_path):
+    """purge_pip_cache() must use the sandbox pip binary, not system pip."""
+    with patch("brain.engine.sandbox.subprocess.run", return_value=_ok_result()) as mock_run:
+        s = Sandbox(base_dir=tmp_path)
+        s.purge_pip_cache()
+        calls = mock_run.call_args_list
+        pip_purge_call = next(
+            (c for c in calls if "cache" in str(c) and "purge" in str(c)), None
+        )
+        assert pip_purge_call is not None
+        cmd = pip_purge_call[0][0]
+        assert str(s.pip) == cmd[0], "purge_pip_cache must use sandbox pip, not system pip"
+
+
+def test_cleanup_calls_purge_pip_cache(tmp_path):
+    """cleanup() must call purge_pip_cache() to clear pip build cache."""
+    with patch("brain.engine.sandbox.subprocess.run", return_value=_ok_result()):
+        s = Sandbox(base_dir=tmp_path)
+        s.create()
+
+    with patch.object(s, "purge_pip_cache") as mock_purge:
+        s.cleanup()
+        mock_purge.assert_called_once()
+
+
+def test_context_manager_purges_pip_cache(tmp_path):
+    """Context manager exit must trigger pip cache purge."""
+    with patch("brain.engine.sandbox.subprocess.run", return_value=_ok_result()):
+        s = Sandbox(base_dir=tmp_path)
+        with patch.object(s, "purge_pip_cache") as mock_purge:
+            s.__exit__(None, None, None)
+            mock_purge.assert_called_once()
+
+
+def test_purge_pip_cache_tolerates_failure(tmp_path):
+    """purge_pip_cache() must not raise even if pip cache purge fails."""
+    with patch("brain.engine.sandbox.subprocess.run", return_value=_fail_result("cache purge failed")):
+        s = Sandbox(base_dir=tmp_path)
+        # Should not raise
+        s.purge_pip_cache()
+
+
+def test_disk_usage_flat_after_cleanup(tmp_path):
+    """After cleanup(), the sandbox directory must not exist (disk reclaimed)."""
+    with patch("brain.engine.sandbox.subprocess.run", return_value=_ok_result()):
+        s = Sandbox(base_dir=tmp_path)
+        s.create()
+        # Simulate some files in the sandbox
+        (s.path / "dummy.whl").write_bytes(b"x" * 1024)
+    s.cleanup()
+    assert not s.path.exists(), "cleanup must fully remove the sandbox dir"

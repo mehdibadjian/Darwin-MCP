@@ -64,8 +64,26 @@ class Sandbox:
                 f"pip install failed for [{pkg_list}]: {result.stderr}"
             )
 
+    def purge_pip_cache(self) -> None:
+        """Purge the pip build/wheel cache to reclaim disk space on the Droplet.
+
+        Runs ``pip cache purge`` using the sandbox's own pip binary so that
+        only cache entries created by this sandbox are removed.  Failures are
+        silently swallowed — a cache-purge error must never abort a mutation.
+        """
+        try:
+            subprocess.run(
+                [str(self.pip), "cache", "purge"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except Exception:
+            pass
+
     def cleanup(self):
-        """Remove the sandbox directory."""
+        """Remove the sandbox directory and purge the pip build cache."""
+        self.purge_pip_cache()
         if self.path.exists():
             shutil.rmtree(self.path, ignore_errors=True)
         self._created = False

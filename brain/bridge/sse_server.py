@@ -16,8 +16,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from brain.engine.mutator import request_evolution
+from brain.middleware.json_validator import JSONValidatorMiddleware
+from brain.utils.context_buffer import compress_search_results
 from brain.utils.registry import discover_species, init_registry, read_registry, write_registry
 from brain.utils.web_fetch import fetch_url, fetch_urls, search_web
+from brain.bridge.router import get_routed_tools
 from brain.watcher.hot_reload import (
     flush_queued_notifications,
     register_sse_callback,
@@ -91,20 +94,43 @@ def _register_builtin_tools(registry_path=None) -> None:
         write_registry(registry, registry_path)
 
 
+def _load_meshnet_config() -> None:
+    """Log the active Meshnet base_url at startup if meshnet.json exists."""
+    import logging
+    config_path = WORKSPACE_ROOT / "brain" / "config" / "meshnet.json"
+    if config_path.exists():
+        try:
+            import json as _json
+            cfg = _json.loads(config_path.read_text())
+            logging.getLogger(__name__).info(
+                "Meshnet bridge configured: base_url=%s model=%s",
+                cfg.get("base_url", "unset"),
+                cfg.get("model", "unset"),
+            )
+        except Exception:
+            pass
+
+
 def _startup() -> None:
     init_registry()
     discover_species()
     _register_builtin_tools()
     cleanup_stale_sandboxes()
     start_watcher()
+    _load_meshnet_config()
 
 
 app = FastAPI(on_startup=[_startup])
+app.add_middleware(JSONValidatorMiddleware)
 
 
 @app.get("/sse")
 async def sse_endpoint(request: Request) -> Response:
-    """Stream tool list and list_changed notifications over SSE after auth check."""
+    """Stream tool list and list_changed notifications over SSE after auth check.
+
+    Optional query parameter ``?query=<text>`` activates the Dynamic Tool Router,
+    which exposes only the top-3 most relevant tools to small models like Gemma 2b.
+    """
     auth = request.headers.get("Authorization")
     if not verify_token(auth):
         return Response(status_code=401)
@@ -116,6 +142,7 @@ async def sse_endpoint(request: Request) -> Response:
         return Response(status_code=400, content=str(exc))
 
     registry_path = get_vault_registry_path(vault_path)
+    query = request.query_params.get("query", "").strip()
 
     async def event_stream():
         queue: asyncio.Queue = asyncio.Queue()
@@ -132,11 +159,14 @@ async def sse_endpoint(request: Request) -> Response:
 
         try:
             registry = read_registry(registry_path)
-            tools = {
-                name: entry
-                for name, entry in registry["skills"].items()
-                if entry.get("status") != "Toxic"
-            }
+            if query:
+                tools = get_routed_tools(query, registry, top_n=3)
+            else:
+                tools = {
+                    name: entry
+                    for name, entry in registry["skills"].items()
+                    if entry.get("status") != "Toxic"
+                }
             yield f"data: {json.dumps({'type': 'tool_list', 'tools': tools})}\n\n"
 
             while True:
@@ -276,11 +306,12 @@ async def search_endpoint(request: Request) -> Response:
         if do_fetch:
             urls = [r["url"] for r in search_results if r.get("url")][:3]
             pages = await loop.run_in_executor(None, lambda: fetch_urls(urls))
-            # Merge snippet + fetched text
+            # Merge snippet + fetched text, then compress to Flash Report.
             for sr in search_results:
                 match = next((p for p in pages if p["url"] == sr.get("url")), None)
                 if match and match.get("status") == "ok":
                     sr["text"] = match["text"]
+            compress_search_results(search_results, query=query)
 
         return JSONResponse(status_code=200, content={
             "status": "ok",

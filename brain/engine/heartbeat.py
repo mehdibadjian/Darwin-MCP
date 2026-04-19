@@ -372,10 +372,16 @@ def _generate_species_scaffold(name: str, description: str, requirements: list) 
         )
         try:
             compile(probe, "<scaffold>", "exec")
-            logger.info("[scaffold] Ollama body syntax OK for %s (%d chars)", func, len(ollama_body))
+            # Runtime check — exec the code and call the function with empty params
+            _ns: dict = {}
+            exec(compile(probe, "<scaffold>", "exec"), _ns)  # noqa: S102
+            test_result = _ns[func]({})
+            assert isinstance(test_result, dict) and test_result.get("status") == "ok", \
+                f"bad return: {test_result}"
+            logger.info("[scaffold] Ollama body runtime OK for %s (%d chars)", func, len(ollama_body))
             body = ollama_body
-        except SyntaxError as e:
-            logger.warning("[scaffold] Ollama body syntax error for %s: %s — using suffix template", func, e)
+        except (SyntaxError, Exception) as e:
+            logger.warning("[scaffold] Ollama body rejected for %s: %s — using suffix template", func, e)
             body = None
     else:
         logger.info("[scaffold] Ollama returned empty — using suffix template for %s", func)

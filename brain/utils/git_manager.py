@@ -4,7 +4,9 @@ Handles: git add → commit (evolution: {name} v{version}) → push to origin ma
 with automatic pull --rebase + retry on push rejection.
 
 ENH-US8: Dynamic vault submodule mounting with thread-safe caching.
+Submodule Handshake: Two-Stage Local Commit keeps the Brain in sync with Memory.
 """
+import logging
 import re
 import subprocess
 import threading
@@ -82,7 +84,37 @@ def _run_git(args, cwd, timeout=30):
     return result.returncode, result.stdout, result.stderr
 
 
-def commit_and_push(name, version, memory_dir=None, vault_id=None):
+def sync_submodule_pointer(vault_cwd: Path, brain_root=None) -> None:
+    """Stage 2 of the Submodule Handshake.
+
+    After committing inside the vault (submodule), call this to record the
+    new submodule pointer in the parent Brain repository:
+
+        git rev-parse HEAD          (inside vault — capture new commit hash)
+        git add <submodule_name>    (inside brain root)
+        git commit -m "chore: sync vault at <short_hash>"
+
+    Silently skips when there is nothing new to commit (pointer already
+    current).  Raises GitError on any unexpected failure.
+    """
+    vault_cwd = Path(vault_cwd)
+    parent_root = Path(brain_root) if brain_root else vault_cwd.parent
+    submodule_name = vault_cwd.name
+
+    rc, hash_out, _ = _run_git(["rev-parse", "HEAD"], cwd=vault_cwd)
+    short_hash = hash_out.strip()[:7] if rc == 0 else "unknown"
+
+    _run_git(["add", submodule_name], cwd=parent_root)
+    rc_commit, _, stderr_commit = _run_git(
+        ["commit", "-m", f"chore: sync vault at {short_hash}"],
+        cwd=parent_root,
+    )
+    if rc_commit != 0 and "nothing to commit" not in stderr_commit:
+        raise GitError(f"Submodule pointer sync failed: {stderr_commit}")
+    logging.info("Submodule pointer updated: %s → %s", submodule_name, short_hash)
+
+
+def commit_and_push(name, version, memory_dir=None, vault_id=None, sync_parent=False, brain_root=None):
     """Execute git add ., commit with 'evolution: {name} v{version}', push to origin main.
 
     Pre-push preflight (US-H2): fetch → checkout main → pull --rebase, then
@@ -92,6 +124,11 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None):
     If vault_id is provided, resolves vault path via resolve_vault().
     Otherwise uses memory_dir (backward compatible).
     Handles push rejection via pull --rebase + retry.
+
+    When sync_parent=True, performs the Two-Stage Submodule Handshake after a
+    successful push: updates the Brain's submodule pointer to the new vault
+    commit so `git submodule status` shows no stale '+' marker.
+
     Returns (success: bool, message: str).
     """
     if vault_id is not None:
@@ -139,6 +176,8 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None):
     # git push
     rc, stdout, stderr = _run_git(["push", "origin", "main"], cwd=cwd)
     if rc == 0:
+        if sync_parent:
+            sync_submodule_pointer(cwd, brain_root=brain_root)
         return True, f"Pushed: {message}"
 
     # Push rejected — try pull --rebase + retry
@@ -157,4 +196,6 @@ def commit_and_push(name, version, memory_dir=None, vault_id=None):
     rc2, stdout2, stderr2 = _run_git(["push", "origin", "main"], cwd=cwd)
     if rc2 != 0:
         raise PushRejectedError(f"Retry push failed after rebase: {stderr2}")
+    if sync_parent:
+        sync_submodule_pointer(cwd, brain_root=brain_root)
     return True, f"Pushed after rebase: {message}"

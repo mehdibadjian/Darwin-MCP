@@ -14,6 +14,7 @@ from brain.utils.git_manager import (
     commit_and_push,
     resolve_vault,
     invalidate_vault_cache,
+    sync_submodule_pointer,
 )
 
 MEMORY_DIR = Path("/fake/memory")
@@ -328,3 +329,89 @@ def test_concurrent_vaults_isolated(tmp_path):
 
     assert all(cwd == str(vault_a) for cwd in recorded["a"])
     assert all(cwd == str(vault_b) for cwd in recorded["b"])
+
+
+# ---------------------------------------------------------------------------
+# Two-Stage Submodule Handshake (sync_parent / sync_submodule_pointer)
+# ---------------------------------------------------------------------------
+
+BRAIN_ROOT = MEMORY_DIR.parent  # /fake
+
+
+def test_sync_parent_false_no_parent_commits():
+    """Default (sync_parent=False): no rev-parse or parent git add/commit called."""
+    ok = _make_result(0)
+    with patch("subprocess.run", return_value=ok) as mock_run:
+        commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR)
+    cmds = [c[0][0] for c in mock_run.call_args_list]
+    assert ["git", "rev-parse", "HEAD"] not in cmds
+
+
+def test_sync_parent_rev_parse_called_after_push():
+    """When sync_parent=True, git rev-parse HEAD is called in the vault after push."""
+    ok = _make_result(0, stdout="abc1234xyz\n")
+    with patch("subprocess.run", return_value=ok) as mock_run:
+        commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR, sync_parent=True, brain_root=BRAIN_ROOT)
+    cmds = [c[0][0] for c in mock_run.call_args_list]
+    assert ["git", "rev-parse", "HEAD"] in cmds
+
+
+def test_sync_parent_adds_submodule_in_brain_root():
+    """Stage 2: git add <submodule_name> must be called with cwd=brain_root."""
+    ok = _make_result(0, stdout="abc1234xyz\n")
+    with patch("subprocess.run", return_value=ok) as mock_run:
+        commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR, sync_parent=True, brain_root=BRAIN_ROOT)
+    parent_add_calls = [
+        c for c in mock_run.call_args_list
+        if c[0][0][:2] == ["git", "add"] and c[1]["cwd"] == str(BRAIN_ROOT)
+    ]
+    assert len(parent_add_calls) == 1
+    assert parent_add_calls[0][0][0][2] == MEMORY_DIR.name  # "memory"
+
+
+def test_sync_parent_commits_pointer_in_brain_root():
+    """Stage 2: chore commit message contains the short hash and targets brain_root."""
+    ok = _make_result(0, stdout="abc1234xyz\n")
+    with patch("subprocess.run", return_value=ok) as mock_run:
+        commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR, sync_parent=True, brain_root=BRAIN_ROOT)
+    parent_commits = [
+        c for c in mock_run.call_args_list
+        if len(c[0][0]) >= 4
+        and c[0][0][:3] == ["git", "commit", "-m"]
+        and c[1]["cwd"] == str(BRAIN_ROOT)
+    ]
+    assert len(parent_commits) == 1
+    msg = parent_commits[0][0][0][3]
+    assert msg.startswith("chore: sync vault at ")
+    assert "abc1234" in msg  # first 7 chars of the mocked hash
+
+
+def test_sync_parent_after_rebase_retry():
+    """Stage 2 also runs when push succeeds only after a rebase-retry."""
+    ok = _make_result(0, stdout="def5678xyz\n")
+    rejected = _make_result(1, stderr="rejected")
+    side = [ok, ok, ok, ok, ok, rejected, ok, ok, ok, ok, ok]
+    with patch("subprocess.run", side_effect=side) as mock_run:
+        commit_and_push("mypkg", 1, memory_dir=MEMORY_DIR, sync_parent=True, brain_root=BRAIN_ROOT)
+    parent_commits = [
+        c for c in mock_run.call_args_list
+        if len(c[0][0]) >= 4
+        and c[0][0][:3] == ["git", "commit", "-m"]
+        and c[1]["cwd"] == str(BRAIN_ROOT)
+    ]
+    assert len(parent_commits) == 1
+
+
+def test_sync_submodule_pointer_standalone(tmp_path):
+    """sync_submodule_pointer can be called directly with explicit vault/brain paths."""
+    vault = tmp_path / "memory"
+    brain = tmp_path
+    vault.mkdir()
+    ok = _make_result(0, stdout="deadbeef12345\n")
+    with patch("subprocess.run", return_value=ok) as mock_run:
+        sync_submodule_pointer(vault, brain_root=brain)
+    cmds = [c[0][0] for c in mock_run.call_args_list]
+    assert ["git", "rev-parse", "HEAD"] in cmds
+    assert ["git", "add", "memory"] in cmds
+    commit_msgs = [c[0][0][3] for c in mock_run.call_args_list if c[0][0][:3] == ["git", "commit", "-m"]]
+    assert any("deadbee" in m for m in commit_msgs)  # first 7 chars of "deadbeef12345"

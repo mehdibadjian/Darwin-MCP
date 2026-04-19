@@ -165,7 +165,7 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
     if git_commit:
         from brain.utils.git_manager import commit_and_push, PushRejectedError, RebaseError
         try:
-            commit_and_push(name, version, memory_dir=memory_dir)
+            commit_and_push(name, version, memory_dir=memory_dir, sync_parent=True)
         except (PushRejectedError, RebaseError) as e:
             logging.warning(f"git push failed for {name} v{version}, reverting registry: {e}")
             try:

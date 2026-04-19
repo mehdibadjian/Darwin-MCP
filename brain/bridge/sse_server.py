@@ -321,3 +321,107 @@ async def search_endpoint(request: Request) -> Response:
         })
 
     return JSONResponse(status_code=422, content={"status": "error", "message": "Provide 'urls' or 'query'"})
+
+
+# ---------------------------------------------------------------------------
+# Genetic Backlog endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/backlog")
+async def backlog_list(request: Request) -> Response:
+    """Return all backlog items, optionally filtered by ?status=pending|running|done|failed."""
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    from brain.engine.backlog import get_all
+    status_filter = request.query_params.get("status", "").strip() or None
+    items = get_all(status=status_filter)
+    return JSONResponse(status_code=200, content={"status": "ok", "count": len(items), "items": items})
+
+
+@app.post("/backlog")
+async def backlog_enqueue(request: Request) -> Response:
+    """Enqueue a new task into the Genetic Backlog.
+
+    Body: {"task_type": str, "payload": dict, "priority": int (1-5, optional)}
+    """
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid JSON"})
+
+    task_type = body.get("task_type", "").strip()
+    payload = body.get("payload", {})
+    priority = int(body.get("priority", 3))
+
+    if not task_type:
+        return JSONResponse(status_code=422, content={"status": "error", "message": "task_type is required"})
+
+    try:
+        from brain.engine.backlog import enqueue
+        item_id = enqueue(task_type=task_type, payload=payload, priority=priority)
+        return JSONResponse(status_code=200, content={"status": "ok", "id": item_id})
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"status": "error", "message": str(exc)})
+
+
+@app.delete("/backlog/{item_id}")
+async def backlog_cancel(item_id: str, request: Request) -> Response:
+    """Mark a pending/running item as failed (cancels it)."""
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    from brain.engine.backlog import mark_failed
+    found = mark_failed(item_id, error="Cancelled via API")
+    if not found:
+        return JSONResponse(status_code=404, content={"status": "error", "message": f"Item '{item_id}' not found"})
+    return JSONResponse(status_code=200, content={"status": "ok", "id": item_id, "cancelled": True})
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat status endpoint
+# ---------------------------------------------------------------------------
+
+@app.get("/heartbeat/status")
+async def heartbeat_status(request: Request) -> Response:
+    """Return the last heartbeat status report from memory/heartbeat_status.json."""
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    status_path = WORKSPACE_ROOT / "memory" / "heartbeat_status.json"
+    if not status_path.exists():
+        return JSONResponse(status_code=200, content={
+            "status": "ok",
+            "heartbeat": None,
+            "message": "Heartbeat has not run yet. Start it with: python -m brain.engine.heartbeat",
+        })
+
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+        return JSONResponse(status_code=200, content={"status": "ok", "heartbeat": data})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(exc)})
+
+
+@app.post("/heartbeat/beat")
+async def heartbeat_beat(request: Request) -> Response:
+    """Trigger one manual heartbeat beat immediately (for testing / First Light)."""
+    auth = request.headers.get("Authorization")
+    if not verify_token(auth):
+        return Response(status_code=401)
+
+    loop = asyncio.get_event_loop()
+    try:
+        from brain.engine.heartbeat import beat
+        report = await loop.run_in_executor(None, beat)
+        return JSONResponse(status_code=200, content={"status": "ok", "report": report})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(exc)})
+

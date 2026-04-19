@@ -157,7 +157,16 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
                 write_registry(registry, registry_path)
             logging.error(f"Rebuild failed for {name}: {err}")
 
-    # Step 7: Git commit + push (US-13–US-16)
+    # Step 7: Record invocation stats (ENH-US5) — before git commit so that
+    # last_used_at / total_calls / success_count are included in the evolution
+    # commit rather than left as an unstaged diff after push.
+    if memory_dir is not None:
+        try:
+            record_invocation(name, success=True, registry_path=registry_path)
+        except Exception as e:
+            logging.warning(f"record_invocation failed for {name}: {e}")
+
+    # Step 8: Git commit + push (US-13–US-16)
     # Registry is written before git add so the commit bundles both the species
     # file and the updated registry.json atomically. On unrecoverable push
     # failure, the registry is reverted to its pre-mutation snapshot to avoid
@@ -178,13 +187,6 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
             )
         except Exception as e:
             logging.warning(f"git push failed for {name} v{version}: {e}")
-
-    # Step 8: Record invocation stats (ENH-US5) — only when memory_dir is set
-    if memory_dir is not None:
-        try:
-            record_invocation(name, success=True, registry_path=registry_path)
-        except Exception as e:
-            logging.warning(f"record_invocation failed for {name}: {e}")
 
     # Step 9: Emit MCP list_changed so connected IDEs discover the new tool
     # immediately — no reconnect required.

@@ -1,268 +1,431 @@
-# Darwin-MCP — The Brain 🧠
+# Darwin-MCP — The Sovereign Organism 🧬
 
-> **🚧 BETA** — Active development. APIs may change between minor versions. Not recommended for production without review.
+[![Tests](https://img.shields.io/badge/tests-298%20passing-brightgreen)](https://github.com/mehdibadjian/Darwin-MCP/actions)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/protocol-MCP%20SSE-purple)](https://modelcontextprotocol.io/)
+[![Status](https://img.shields.io/badge/status-sovereign-gold)](https://github.com/mehdibadjian/Darwin-MCP)
+[![License](https://img.shields.io/badge/license-TBD-lightgrey)](LICENSE)
 
-![Beta](https://img.shields.io/badge/status-beta-orange) ![Tests](https://img.shields.io/badge/tests-249%20passing-brightgreen) ![Python](https://img.shields.io/badge/python-3.9%2B-blue) ![License](https://img.shields.io/badge/license-TBD-lightgrey)
-
-A **stateless MCP SSE server** that enables LLMs to evolve, register, and invoke AI skills at runtime — and now powers a **cloud-less AI assistant** running Gemma 2b on your phone over NordVPN Meshnet with zero API costs.
-
-## What Is This?
-
-Darwin-MCP is a system for **dynamic AI skill evolution**. The Host LLM (you, ChatGPT, Claude, Gemma 2b, etc.) can:
-
-1. **Request Evolution** — Send Python code + tests to the Brain
-2. **Sandbox Test** — Brain validates code in isolation (no dependency conflicts)
-3. **Promote to Registry** — Passing tests → species file committed to git
-4. **Invoke Skills** — Brain exposes all registered tools over MCP protocol
-
-The system implements **three biosafety layers**:
-- **BSL-1**: Dependency isolation (separate `requirements.txt` per mutation)
-- **BSL-2**: Resource & recursion limits (CPU, RAM, call depth guardrails)
-- **BSL-3**: Detailed error reporting (file + line + context in every failure)
-
-### The Triad Architecture
-
-```
-┌──────────────────────────────────────────────┐
-│ Host LLM                                     │
-│ ChatGPT / Claude / Copilot / Gemma 2b (phone)│
-└──────┬───────────────────────────────────────┘
-       │ MCP SSE  (Bearer Token auth)
-       │ — or — NordVPN Meshnet (cloud-less mode)
-       ▼
-┌──────────────────────────────────────────────┐
-│  Brain  (mcp-evolution-core)  ← This repo    │
-│                                              │
-│  bridge/                                     │
-│    sse_server.py      SSE transport + auth   │
-│    router.py          Dynamic Tool Router ✨  │
-│                                              │
-│  engine/                                     │
-│    mutator.py         Mutation pipeline      │
-│    guard.py           Circuit breaker        │
-│    sandbox.py         Isolated virtualenv    │
-│                                              │
-│  middleware/                                 │
-│    json_validator.py  Self-healing JSON ✨   │
-│                                              │
-│  utils/                                      │
-│    context_buffer.py  Flash Summarizer ✨    │
-│    registry.py        Registry I/O           │
-│    git_manager.py     Git state machine      │
-│    web_fetch.py       HTTP utilities         │
-│                                              │
-│  prompts/                                    │
-│    system_prompt.txt  XML reasoning rails ✨ │
-│    golden_log.txt     Few-shot primer ✨     │
-│                                              │
-│  config/                                     │
-│    meshnet.json       Meshnet bridge ✨      │
-└──────┬───────────────────────────────────────┘
-       │ reads/writes (git submodule)
-       ▼
-┌──────────────────────────────────────────────┐
-│  Memory  (mcp-evolution-vault)  ← Private    │
-│  dna/registry.json    Source of truth        │
-│  species/*.py         AI skill files         │
-│    brave_search.py    Real-time web search ✨ │
-│    sequential_thinking.py  CoT scaffold ✨   │
-└──────────────────────────────────────────────┘
-```
-
-> ✨ = added in the Cloud-less AI update
+> A living system where LLMs write, test, register, and invoke AI skills at runtime — governed by biosafety, resurrected by cron, and immune to gene duplication.
 
 ---
 
-## 🆕 Cloud-less AI Mode
+## The Triad Architecture
 
-Run a **free, private AI assistant** that rivals Claude + Perplexity with zero cloud costs:
+Darwin-MCP is not a server. It is an **organism** — composed of three decoupled entities with precisely defined roles:
 
-| Component | What it does |
-|-----------|-------------|
-| **Dynamic Tool Router** | Scores all skills by query relevance; exposes only top-3 to Gemma 2b. Prevents hallucination from tool overload. |
-| **JSON Validator Middleware** | Catches malformed tool calls from small models, returns a `retry_hint` so Gemma self-corrects. |
-| **Flash Summarizer** | Compresses web pages to ≤400 tokens before sending over Meshnet. No LLM required. |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  HOST  (The Mind)                                               │
+│  ChatGPT · Claude · Copilot · Gemma 2b on your phone           │
+│  Issues mutation requests · Invokes skills · Reads SSE stream   │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │  MCP SSE over HTTPS  (Bearer Token)
+                       │  — or —  NordVPN Meshnet (cloud-less mode)
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  BRAIN  (The Logic)   ← This repository                        │
+│  github.com/mehdibadjian/Darwin-MCP                             │
+│                                                                 │
+│  bridge/sse_server.py   ← Membrane: SSE transport + auth        │
+│  bridge/router.py       ← Dynamic Tool Router (TF-IDF top-3)   │
+│  engine/mutator.py      ← Ribosome: mutation pipeline           │
+│  engine/sandbox.py      ← Lysosome: isolated venv + cache purge │
+│  engine/guard.py        ← Circuit breaker: CPU/RAM/depth limits │
+│  engine/inquiry.py      ← LeanKG Guard: gene duplication check  │
+│  engine/peer_review.py  ← Council of Peers: multi-model review  │
+│  watcher/hot_reload.py  ← MCP notifications/tools/list_changed  │
+│  scripts/sanity_check.sh← Resurrection: hourly health monitor   │
+│  utils/git_manager.py   ← Git state machine                     │
+│  utils/registry.py      ← Atomic registry I/O                   │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │  Git Submodule  (SSH)
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  MEMORY  (The Vault)  ← Private submodule                      │
+│  github.com/mehdibadjian/mcp-evolution-vault                    │
+│                                                                 │
+│  dna/registry.json   ← Single source of truth for all skills   │
+│  species/*.py        ← Living AI skill files (the genome)      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**The Brain is stateless. The Memory is stateful. The Host is autonomous.**
+The separation is absolute — the Brain can be redeployed, upgraded, or swapped without touching a single species file.
+
+---
+
+## The Viral Lifecycle
+
+Every new skill passes through three phases before it earns a place in the genome:
+
+### Phase 1 — Inquiry
+Before synthesising anything, the Brain checks whether a semantically equivalent skill already exists.
+
+```python
+# LeanKG Guard prevents gene duplication
+# "excel_to_json" → detected as similar to "csv_parser" → suggest adaptation
+match = check_semantic_similarity("excel_to_json", registry,
+    description="Converts Excel rows to JSON objects")
+# Returns: SemanticMatch(existing_skill='csv_parser', score=0.27,
+#   suggestion='Consider adapting csv_parser instead...')
+```
+
+If a near-duplicate is detected, the pipeline halts and suggests adaptation. Gene duplication is evolution's waste — Darwin-MCP rejects it.
+
+### Phase 2 — Infection (Sandbox)
+New code runs in complete isolation: a temporary virtualenv at `/tmp/mutation_{timestamp}`, with its own pip, its own dependencies, and no access to the host environment.
+
+```
+/tmp/mutation_1745123456/
+└── venv/
+    ├── bin/pip        ← isolated pip (never touches system)
+    ├── bin/python     ← isolated python
+    └── lib/           ← dependencies quarantined here
+```
+
+After every mutation — success or failure — the **Lysosome** runs:
+1. `pip cache purge` via the sandbox pip (reclaims `~/.cache/pip` space)
+2. `shutil.rmtree` on the entire sandbox directory
+
+On a $5 Droplet, disk usage stays flat across thousands of mutations.
+
+### Phase 3 — Replication (Promotion)
+Only code that passes all its tests is promoted to the genome:
+
+```
+request_evolution()
+  │
+  ├─ 1. Validate inputs
+  ├─ 1b. Semantic similarity check (LeanKG Guard)
+  ├─ 2. Resolve species/registry paths
+  ├─ 3. Run pytest in sandbox → fail hard if any test fails
+  │      └─ on failure: increment_failure_count(name)
+  │         └─ at 3 failures: Council of Peers escalation
+  ├─ 4. Write species file to memory/species/{name}.py
+  ├─ 5. Atomic registry update (registry.json)
+  ├─ 6. Dependency tracking + env rebuild
+  ├─ 7. Git commit + push to private vault (atomic with registry)
+  ├─ 8. Record invocation stats
+  └─ 9. Emit notifications/tools/list_changed → IDE refreshes instantly
+```
+
+**No code enters the genome without passing its tests. No exceptions.**
+
+---
+
+## Sovereign Features
+
+### 🧹 Lysosome — Automatic Garbage Collection
+`brain/engine/sandbox.py` · commit `4cfe20a`
+
+After every mutation, `Sandbox.cleanup()` calls `purge_pip_cache()` — running `pip cache purge` via the sandbox's own pip binary. Disk usage on the $5 Droplet remains flat regardless of mutation volume.
+
+### 🔔 MCP-Compliant `notifications/tools/list_changed`
+`brain/watcher/hot_reload.py` · commit `66692a9`
+
+The Brain emits the official MCP notification format the moment a mutation succeeds:
+```python
+MCP_LIST_CHANGED = {"method": "notifications/tools/list_changed", "params": {}}
+```
+Connected IDEs (Cursor, Claude Desktop, VS Code) refresh their tool palette instantly — no reconnect required.
+
+### 🔧 Resurrection — Self-Healing Crontab
+`brain/scripts/sanity_check.sh` · commit `afdcd5f`
+
+An hourly cron job performs three checks:
+1. **Port 8000** — restarts `darwin.service` if the SSE server is unresponsive
+2. **Stale `.git/index.lock` files** — removed silently after a crashed mid-mutation
+3. **`git submodule update --remote`** — keeps the Brain in sync with the Vault
+
+The system recovers from a mid-mutation power failure without manual SSH intervention.
+
+```bash
+# Install once
+bash brain/scripts/install_cron.sh
+```
+
+### 🔬 LeanKG Guard — Gene Duplication Prevention
+`brain/engine/inquiry.py` · commit `4e3fd05`
+
+Before evolving any new skill, the Brain runs a two-pass semantic similarity check:
+- **Pass 1** — difflib token ratio on skill names (threshold: 0.55)
+- **Pass 2** — Jaccard coefficient on description word sets (threshold: 0.20)
+
+If either pass detects a near-duplicate, evolution is blocked and the Host receives a suggestion to adapt the existing species. The algorithm is API-stable — drop in an embedding model later without touching `request_evolution`.
+
+### 🤝 Council of Peers — Multi-Model Validation
+`brain/engine/peer_review.py` · commit `97f6885`
+
+After 3 consecutive failures for the same skill, the Brain escalates to a secondary LLM configured in `brain/config/meshnet.json`. The secondary model receives the failing code, tests, and error context, and returns a `fixed_code` + `explanation`. If no secondary model is configured, the system degrades gracefully.
+
+```python
+# Automatically triggered inside request_evolution() — no changes needed
+# To configure: set base_url + api_key + model in brain/config/meshnet.json
+```
+
+### 🌐 Cloud-less AI Mode (Gemma 2b on Phone)
+`brain/bridge/router.py` · `brain/middleware/json_validator.py`
+
+Run a free, private AI assistant over NordVPN Meshnet with zero API costs:
+
+| Component | Role |
+|-----------|------|
+| **Dynamic Tool Router** | `GET /sse?query=<text>` — TF-IDF scoring, returns top-3 tools. Prevents hallucination on small models. |
+| **JSON Validator Middleware** | Catches malformed tool calls, returns `retry_hint` so Gemma 2b self-corrects. |
+| **Flash Summarizer** | Compresses web pages to ≤400 tokens before Meshnet transmission. |
 | **XML Reasoning Rails** | `<thought>/<call>/<answer>` system prompt enforces rigid syntax on small models. |
-| **Golden Log** | 3 curated perfect-interaction transcripts act as few-shot examples at context start. |
-| **Brave Search** | Perplexity-mode real-time web research via Brave Search API. |
-| **Sequential Thinking** | Deterministic chain-of-thought scaffold for multi-step problems. |
+| **Golden Log** | 3 curated transcripts as few-shot context at session start. |
 
-**→ [Full Cloud-less AI Plan](docs/reference/cloudless-ai-plan.md)**
 **→ [Meshnet Setup Guide](docs/how-to/meshnet-setup.md)**
+
+### 🛡️ Three-Layer Biosafety
+| Level | Component | Protection |
+|-------|-----------|-----------|
+| **BSL-1** | `brain/engine/deps.py` | Dependency isolation — each mutation gets its own `requirements.txt` scope |
+| **BSL-2** | `brain/engine/guard.py` | Circuit breaker — recursion depth ≤3, CPU ≤80%, RAM ≤256 MB, Toxic flag |
+| **BSL-3** | `brain/engine/mutator.py` | Contextualized error reporting — file + line + assertion detail in every failure |
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-
 - Python 3.9+
-- Git (with SSH key configured for private submodule)
-- $5 VPS or local development machine
+- Git with SSH key configured for the private Memory submodule
+- $5 Droplet or local machine
 
 ### 1. Clone & Initialize
 
 ```bash
 git clone https://github.com/mehdibadjian/Darwin-MCP.git
-cd mcp-evolution-core
+cd Darwin-MCP
 git submodule update --init --recursive
 pip install -r brain/requirements.txt
 ```
 
-### 2. Set Environment
+### 2. Configure
 
 ```bash
-export MCP_BEARER_TOKEN="your-secure-token-here"
-export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa"  # for private submodule
+# Required
+export MCP_BEARER_TOKEN="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa"
 
-# Optional — for cloud-less Brave Search
+# Optional — enables Brave Search species and cloud-less mode
 export BRAVE_API_KEY="your-brave-api-key"
 ```
 
 ### 3. Start the Brain
 
 ```bash
-# Local development (auto-reload)
+# Development (hot-reload)
 uvicorn brain.bridge.sse_server:app --reload --host 0.0.0.0 --port 8000
 
-# Production (systemd)
+# Production (systemd — see Production Deployment below)
 sudo systemctl start darwin
-sudo systemctl status darwin
 ```
 
-### 4. Connect from Your LLM
-
-```bash
-mcp install -t sse://localhost:8000 \
-  --bearer-token "your-secure-token-here"
-```
-
-### 5. Cloud-less Mode (Gemma 2b on phone)
-
-```bash
-# Edit brain/config/meshnet.json — set base_url to your phone's Meshnet IP
-# Then inject brain/prompts/system_prompt.txt + golden_log.txt into Gemma's context
-# Full guide: docs/how-to/meshnet-setup.md
-```
-
----
-
-## Key Concepts
-
-### Species
-
-A **species** is a registered AI skill — a Python module in `/memory/species/`. Each species:
-- Has a `.py` file (the code) and an entry in `registry.json`
-- Exposes a `short_description` (≤10 words) used by the Tool Router
-- Can be invoked by the Host LLM over MCP
-- Can evolve (mutate) when the Host sends new code + tests
-
-### Mutation Pipeline
-
-1. **Validate** — Check inputs (non-empty strings, valid lists)
-2. **Sandbox** — Create `/tmp/mutation_{timestamp}` virtualenv
-3. **Install Deps** — `pip install` in isolated env
-4. **Run Tests** — Execute pytest; fail fast if tests don't pass
-5. **Promote** — Write `.py` to `/memory/species/` only if tests pass
-6. **Commit** — Git commit + push to private memory vault
-7. **Update Registry** — Atomic write to `registry.json`
-
-**No code enters the system without passing its tests.**
-
-### Registry
-
-`memory/dna/registry.json` is the **single source of truth**. Each skill entry now includes `short_description` for Tool Router scoring:
+### 4. Connect Your LLM
 
 ```json
+// Cursor / Claude Desktop — settings.json
 {
-  "skills": {
-    "brave_search": {
-      "status": "active",
-      "short_description": "Search web for real-time facts.",
-      "entry_point": "brave_search",
-      "version": 1
+  "mcpServers": {
+    "darwin-brain": {
+      "url": "https://brain.yourdomain.com/sse",
+      "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
 }
 ```
 
-### Dynamic Tool Router
-
-`GET /sse?query=<text>` activates the router. Instead of sending all tools to the model, it scores each skill's `short_description` against the query using TF-IDF overlap and returns only the top-3 matches. Critical for models like Gemma 2b that hallucinate with >5 tools visible.
-
-### Circuit Breaker
-
-| Limit | Default | Purpose |
-|-------|---------|---------|
-| `MAX_RECURSION_DEPTH` | 3 | Prevent infinite skill → skill chains |
-| `MAX_CPU_PERCENT` | 80% | Stop runaway CPU spins |
-| `MAX_MEMORY_MB` | 256 MB | Prevent memory leaks crashing the Brain |
-
----
-
-## Architecture Layers
-
-| Layer | File | Role |
-|-------|------|------|
-| **SSE Transport** | `brain/bridge/sse_server.py` | HTTP/SSE endpoint, Bearer token auth, MCP protocol |
-| **Tool Router** | `brain/bridge/router.py` | TF-IDF query→tool scoring, top-N filtering |
-| **Mutation Engine** | `brain/engine/mutator.py` | Full evolution pipeline orchestration |
-| **Circuit Breaker** | `brain/engine/guard.py` | Recursion depth, CPU/RAM limits, Toxic flag |
-| **Sandbox** | `brain/engine/sandbox.py` | Isolated virtualenv creation and cleanup |
-| **JSON Middleware** | `brain/middleware/json_validator.py` | Self-healing malformed JSON correction |
-| **Flash Summarizer** | `brain/utils/context_buffer.py` | Extractive ≤400-token compression of web content |
-| **Registry I/O** | `brain/utils/registry.py` | Atomic read/write of `registry.json` |
-| **Git Manager** | `brain/utils/git_manager.py` | Commit, push, rebase on conflict |
-| **Web Fetch** | `brain/utils/web_fetch.py` | HTTP utilities for search + page fetch |
-| **Hot Reload** | `brain/watcher/hot_reload.py` | Watchdog, emits `list_changed` SSE events |
-| **Deps** | `brain/engine/deps.py` | `requirements.txt` append + env rebuild |
-
----
-
-## Common Tasks
-
-### Create a New Skill
+### 5. Evolve Your First Skill
 
 ```python
 from brain.engine.mutator import request_evolution
 
-request_evolution(
-    name="my_tool",
-    code="def my_tool(x): return x * 2",
-    tests="def test(): assert my_tool(5) == 10",
-    requirements=["numpy"]
+result = request_evolution(
+    name="double_it",
+    code="def double_it(x): return x * 2",
+    tests="def test_double(): assert double_it(5) == 10",
+    requirements=[],
+    description="Multiplies a number by two",
+    git_commit=True,
 )
+print(result.message)
+# → "Skill 'double_it' evolved successfully at version 1"
+# Connected IDEs refresh their tool list automatically.
 ```
 
-### Route Tools by Query (Cloud-less mode)
+---
+
+## Production Deployment
+
+### Step 1 — Install Nginx & Certbot
 
 ```bash
-curl -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
-  "http://localhost:8000/sse?query=search+the+web+for+news"
-# Returns only the 3 most relevant tools — not all skills
+sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx
 ```
 
-### Search the Web via Brain
+### Step 2 — Configure Reverse Proxy
 
 ```bash
-curl -X POST -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+sudo cp brain/config/nginx.conf.template /etc/nginx/sites-available/darwin-mcp
+sudo sed -i 's/DOMAIN_NAME/brain.yourdomain.com/g' /etc/nginx/sites-available/darwin-mcp
+sudo ln -s /etc/nginx/sites-available/darwin-mcp /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Step 3 — SSL Certificate
+
+```bash
+sudo certbot --nginx -d brain.yourdomain.com
+# Auto-renewal is managed by Certbot's systemd timer.
+```
+
+### Step 4 — Harden the Bearer Token
+
+```bash
+# Generate and store — never hardcode
+echo "MCP_BEARER_TOKEN=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
+  | sudo tee /opt/mcp-evolution-core/.env
+sudo chmod 600 /opt/mcp-evolution-core/.env
+```
+
+### Step 5 — Install Systemd Service
+
+```bash
+sudo cp darwin.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now darwin
+sudo journalctl -u darwin -f
+```
+
+### Step 6 — Self-Healing Crontab
+
+```bash
+sudo -u darwin bash brain/scripts/install_cron.sh
+# Runs sanity_check.sh hourly: port check + lock cleanup + submodule sync
+```
+
+### Step 7 — Firewall
+
+```bash
+sudo ufw allow 22 && sudo ufw allow 80 && sudo ufw allow 443
+sudo ufw deny 8000   # port 8000 never exposed directly — Nginx only
+sudo ufw enable
+```
+
+**→ [Full Deployment Hardening Guide](docs/how-to/deployment-hardening.md)**
+
+---
+
+## Architecture Reference
+
+| Component | File | Role |
+|-----------|------|------|
+| **Membrane** | `brain/bridge/sse_server.py` | SSE transport, Bearer auth, MCP protocol, vault routing |
+| **Tool Router** | `brain/bridge/router.py` | TF-IDF query→tool scoring, top-N filtering |
+| **Ribosome** | `brain/engine/mutator.py` | Full mutation pipeline orchestration |
+| **Lysosome** | `brain/engine/sandbox.py` | Isolated virtualenv + post-mutation pip cache purge |
+| **Circuit Breaker** | `brain/engine/guard.py` | Recursion depth, CPU/RAM limits, Toxic flag |
+| **LeanKG Guard** | `brain/engine/inquiry.py` | Semantic similarity — blocks gene duplication |
+| **Council of Peers** | `brain/engine/peer_review.py` | Multi-model fallback after 3 failures |
+| **JSON Middleware** | `brain/middleware/json_validator.py` | Self-healing malformed JSON with retry hints |
+| **Flash Summarizer** | `brain/utils/context_buffer.py` | Extractive ≤400-token compression |
+| **Registry I/O** | `brain/utils/registry.py` | Atomic read/write of `registry.json` with file locking |
+| **Git Manager** | `brain/utils/git_manager.py` | Commit, push, rebase; atomic with registry write |
+| **Hot Reload** | `brain/watcher/hot_reload.py` | Watchdog + MCP `notifications/tools/list_changed` |
+| **Resurrection** | `brain/scripts/sanity_check.sh` | Hourly: port check, lock cleanup, submodule sync |
+| **Nginx Template** | `brain/config/nginx.conf.template` | Production reverse proxy with SSL + SSE headers |
+
+---
+
+## Common Commands
+
+```bash
+# Run the full test suite
+pytest tests/ -q
+# → 298 passed, 2 skipped
+
+# Evolve a skill via the REST API
+curl -X POST https://brain.yourdomain.com/evolve \
+  -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"query": "latest Python release", "fetch": true}' \
-  http://localhost:8000/search
-# Response includes flash_report (≤400 tokens) alongside full text
-```
+  -d '{"name":"add","code":"def add(a,b): return a+b","tests":"def test(): assert add(2,3)==5","requirements":[]}'
 
-### View Registered Skills
+# Query tools by relevance (cloud-less routing)
+curl -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+  "https://brain.yourdomain.com/sse?query=search+the+web"
 
-```bash
+# Web search via Brain
+curl -X POST https://brain.yourdomain.com/search \
+  -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "latest Python release", "fetch": true}'
+
+# View the genome
 cat memory/dna/registry.json | jq '.skills | keys'
+
+# Check Droplet vitals
+curl https://brain.yourdomain.com/tools/get_droplet_vitals/invoke \
+  -H "Authorization: Bearer $MCP_BEARER_TOKEN"
 ```
 
-### Run Tests
+---
 
-```bash
-pytest tests/ -v
-# 249 passing, 2 skipped
+## Directory Structure
+
+```
+Darwin-MCP/
+├── brain/
+│   ├── bridge/
+│   │   ├── sse_server.py          ← Membrane: SSE + auth + vault routing
+│   │   └── router.py              ← Dynamic Tool Router
+│   ├── config/
+│   │   ├── meshnet.json           ← Meshnet / Council of Peers config
+│   │   └── nginx.conf.template    ← Production Nginx template
+│   ├── engine/
+│   │   ├── mutator.py             ← Full mutation pipeline
+│   │   ├── sandbox.py             ← Lysosome: isolated venv + cache purge
+│   │   ├── guard.py               ← Circuit breaker (BSL-2)
+│   │   ├── inquiry.py             ← LeanKG Guard: semantic similarity
+│   │   ├── peer_review.py         ← Council of Peers: multi-model fallback
+│   │   ├── scavenger.py           ← External skill harvesting
+│   │   ├── vitals.py              ← Droplet metrics MCP tool
+│   │   ├── pytest_runner.py       ← Sandboxed test execution
+│   │   └── deps.py                ← Dependency tracking (BSL-1)
+│   ├── middleware/
+│   │   └── json_validator.py      ← Self-healing JSON (BSL-3)
+│   ├── prompts/
+│   │   ├── system_prompt.txt      ← XML reasoning rails (cloud-less)
+│   │   └── golden_log.txt         ← Few-shot primer (cloud-less)
+│   ├── scripts/
+│   │   ├── sanity_check.sh        ← Resurrection: hourly health monitor
+│   │   └── install_cron.sh        ← Crontab installer
+│   ├── utils/
+│   │   ├── registry.py            ← Atomic registry I/O
+│   │   ├── git_manager.py         ← Git state machine
+│   │   ├── web_fetch.py           ← HTTP fetch + DuckDuckGo search
+│   │   └── context_buffer.py      ← Flash Summarizer
+│   └── watcher/
+│       └── hot_reload.py          ← Watchdog + MCP list_changed
+├── memory/                         ← Git submodule (private vault)
+│   ├── dna/registry.json           ← The genome index
+│   └── species/*.py                ← Living skill files
+├── docs/
+│   ├── reference/
+│   │   ├── technical-manifesto.md
+│   │   ├── agile-backlog.md
+│   │   └── hardening-backlog.md
+│   ├── tutorials/getting-started.md
+│   └── how-to/
+│       ├── common-tasks.md
+│       ├── meshnet-setup.md
+│       └── deployment-hardening.md
+├── tests/                           ← pytest suite (298 passing)
+├── darwin.service                   ← Systemd unit (uvicorn + hardening)
+└── CONTRIBUTING.md
 ```
 
 ---
@@ -272,126 +435,20 @@ pytest tests/ -v
 | Document | Purpose |
 |----------|---------|
 | **[Getting Started](docs/tutorials/getting-started.md)** | Local setup, first skill, verify install |
-| **[How-To: Common Tasks](docs/how-to/common-tasks.md)** | Create skills, debug, deploy, rollback |
-| **[How-To: Meshnet Setup](docs/how-to/meshnet-setup.md)** | NordVPN Meshnet + Gemma 2b on phone |
-| **[Cloud-less AI Plan](docs/reference/cloudless-ai-plan.md)** | Full architecture, design decisions, all components |
-| **[Technical Manifesto](docs/reference/technical-manifesto.md)** | API contracts, Git state machine, BSL biosafety |
-| **[Agile Backlog](docs/reference/agile-backlog.md)** | Epics, stories, sprint plans |
+| **[Common Tasks](docs/how-to/common-tasks.md)** | Create, debug, deploy, rollback skills |
+| **[Deployment Hardening](docs/how-to/deployment-hardening.md)** | Nginx, SSL, bearer token, UFW, crontab |
+| **[Meshnet Setup](docs/how-to/meshnet-setup.md)** | NordVPN Meshnet + Gemma 2b on phone |
+| **[Technical Manifesto](docs/reference/technical-manifesto.md)** | API contracts, Git state machine, BSL layers |
+| **[Hardening Backlog](docs/reference/hardening-backlog.md)** | Security epics, user stories, sprint plans |
+| **[Agile Backlog](docs/reference/agile-backlog.md)** | Full feature backlog and story points |
+| **[CONTRIBUTING](CONTRIBUTING.md)** | Contribution model, mutation standards, branching |
 
 ---
 
-## Deployment
+## Support
 
-### Local Development
-
-```bash
-uvicorn brain.bridge.sse_server:app --reload
-```
-
-### Production ($5 Droplet)
-
-```bash
-sudo cp darwin.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now darwin
-sudo journalctl -u darwin -f
-```
-
----
-
-## Directory Structure
-
-```
-mcp-evolution-core/
-├── brain/
-│   ├── bridge/
-│   │   ├── sse_server.py        ← HTTP/SSE entry point
-│   │   └── router.py            ← Dynamic Tool Router ✨
-│   ├── config/
-│   │   └── meshnet.json         ← Meshnet bridge config ✨
-│   ├── engine/
-│   │   ├── mutator.py           ← Mutation orchestration
-│   │   ├── sandbox.py           ← Isolated virtualenv
-│   │   ├── guard.py             ← Circuit breaker
-│   │   ├── pytest_runner.py     ← Test execution
-│   │   └── deps.py              ← Dependency management
-│   ├── middleware/
-│   │   └── json_validator.py    ← Self-healing JSON ✨
-│   ├── prompts/
-│   │   ├── system_prompt.txt    ← XML reasoning rails ✨
-│   │   └── golden_log.txt       ← Few-shot primer ✨
-│   └── utils/
-│       ├── registry.py          ← Registry I/O
-│       ├── git_manager.py       ← Git operations
-│       ├── web_fetch.py         ← HTTP utilities
-│       └── context_buffer.py    ← Flash Summarizer ✨
-├── memory/                       ← Git submodule (private)
-│   ├── dna/registry.json         ← Source of truth
-│   └── species/
-│       ├── brave_search.py       ← Real-time web search ✨
-│       ├── sequential_thinking.py← CoT scaffold ✨
-│       ├── leankg.py             ← Code knowledge graph
-│       ├── nestjs_best_practices.py
-│       └── fpga_best_practices.py
-├── docs/
-│   ├── index.md
-│   ├── reference/
-│   │   ├── cloudless-ai-plan.md  ← ✨ new
-│   │   ├── technical-manifesto.md
-│   │   └── agile-backlog.md
-│   ├── tutorials/getting-started.md
-│   └── how-to/
-│       ├── common-tasks.md
-│       └── meshnet-setup.md      ← ✨ new
-├── tests/                        ← pytest suite (249 passing)
-└── darwin.service                ← Systemd unit
-```
-
----
-
-## Contributing
-
-> This project is in **beta**. Contributions are welcome — please follow the conventions below exactly.
-
-### Workflow
-
-1. **Branch** — `git checkout -b feat/US-N-short-description`
-2. **TDD red** — Write failing tests first, commit them: `test(US-N): describe what is tested`
-3. **TDD green** — Implement code to pass tests, commit: `feat(US-N): describe what is built`
-4. **Refactor** — Clean up, commit: `refactor(US-N): describe change`
-5. **Push & PR** — `git push origin feat/US-N-short-description`
-
-### Commit Format
-
-```
-type(scope): short imperative description
-
-Optional body explaining WHY, not WHAT.
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-```
-
-**Types:** `feat` · `fix` · `test` · `refactor` · `docs` · `chore`
-**Scopes:** `US-N` for story work · `cloudless` · `guard` · `registry` · etc.
-
-### Rules
-
-- ✅ Tests must pass before any `feat` commit: `pytest tests/ -q`
-- ✅ Every new module needs a corresponding `tests/test_<module>.py`
-- ✅ `short_description` on all new registry skills (≤10 words, action-first verb)
-- ✅ No secrets in code — tokens always from environment variables
-- ❌ Do not skip the `test` commit — red phase is required
-- ❌ Do not commit directly to `main`
-
-### Beta Limitations
-
-| Area | Status |
-|------|--------|
-| `/health` endpoint | Not yet implemented |
-| Multi-tenant vault routing | Beta — API may change |
-| Meshnet auto-discovery | Manual config required |
-| Brave Search species | Requires `BRAVE_API_KEY` |
-| Windows support | Untested |
+- **Issues** — [github.com/mehdibadjian/Darwin-MCP/issues](https://github.com/mehdibadjian/Darwin-MCP/issues)
+- **Discussions** — [github.com/mehdibadjian/Darwin-MCP/discussions](https://github.com/mehdibadjian/Darwin-MCP/discussions)
 
 ---
 
@@ -399,11 +456,6 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 
 TBD
 
-## Support & Resources
-
-- **Issues**: [GitHub Issues](https://github.com/mehdibadjian/Darwin-MCP/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/mehdibadjian/Darwin-MCP/discussions)
-
 ---
 
-**The Brain is evolving. Train it well.** 🚀
+*The genome is open. Evolve responsibly.* 🧬

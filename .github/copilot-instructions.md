@@ -47,3 +47,6 @@ Converts a technical manifesto or architecture spec into a fully structured Agil
 
 ### Wiki Architect (`wiki-architect.prompt.md`)
 Produces structured wiki catalogues and onboarding guides from the codebase. Emits a hierarchical JSON catalogue covering Principal-Level Guide, Zero-to-Hero Learning Path, Getting Started, and Deep Dive sections — every section cites real file paths. Use when asked to "create a wiki", "document this repo", or "architecture overview".
+
+### Evolutionary Step (`.claude/skills/evolutionary-step/SKILL.md`)
+Runs the MCP server (starts it if needed), then follows a mission to extend memory by evolving a new skill via the `/evolve` pipeline. Use when asked to "run an evolutionary step", "evolve a skill", "extend memory", or "teach Darwin to do X".

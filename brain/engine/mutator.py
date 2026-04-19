@@ -62,7 +62,7 @@ def _get_version(registry, name):
     return 1
 
 
-def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None, requirements_path=None, recursion_depth=0, git_commit=False, memory_dir=None):
+def request_evolution(name, code, tests, requirements, species_dir=None, registry_path=None, python_bin=None, requirements_path=None, recursion_depth=0, git_commit=False, memory_dir=None, description="", skip_similarity_check=False):
     """Orchestrate the mutation pipeline.
 
     Returns MutationResult.
@@ -84,6 +84,21 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
     except ValidationError as e:
         return MutationResult(success=False, error=str(e))
 
+    # Step 1b: Semantic similarity check — prevent gene duplication (LeanKG)
+    if not skip_similarity_check:
+        try:
+            from brain.engine.inquiry import check_semantic_similarity
+            init_registry(registry_path)
+            current_registry = read_registry(registry_path)
+            match = check_semantic_similarity(name, current_registry, description=description)
+            if match and match.existing_skill != name:
+                return MutationResult(
+                    success=False,
+                    error=f"Gene duplication detected: {match.suggestion}",
+                )
+        except Exception as e:
+            logging.warning(f"Semantic similarity check failed for {name}: {e}")
+
     # Step 2: Resolve paths
     if species_dir is None:
         species_dir = SPECIES_DIR
@@ -94,6 +109,17 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
     # Step 3: Run tests in sandbox
     tests_passed, pytest_error = _run_tests(python_bin, tests, code, name)
     if not tests_passed:
+        # Track consecutive failures — trigger peer review after FAILURE_COUNT_THRESHOLD
+        try:
+            from brain.engine.peer_review import increment_failure_count, request_peer_review, PeerReviewRequest, FAILURE_COUNT_THRESHOLD
+            failure_count = increment_failure_count(name)
+            if failure_count >= FAILURE_COUNT_THRESHOLD:
+                pr_request = PeerReviewRequest(skill_name=name, code=code, tests=tests, error=pytest_error)
+                pr_result = request_peer_review(pr_request, current_failure_count=failure_count)
+                if pr_result.reviewed and pr_result.fixed_code:
+                    logging.info(f"Peer review provided fix for {name}: {pr_result.explanation}")
+        except Exception as pr_err:
+            logging.warning(f"Peer review hook failed for {name}: {pr_err}")
         return MutationResult(success=False, error=pytest_error)
 
     # Step 4: Write species file (only on test pass)
@@ -159,6 +185,21 @@ def request_evolution(name, code, tests, requirements, species_dir=None, registr
             record_invocation(name, success=True, registry_path=registry_path)
         except Exception as e:
             logging.warning(f"record_invocation failed for {name}: {e}")
+
+    # Step 9: Emit MCP list_changed so connected IDEs discover the new tool
+    # immediately — no reconnect required.
+    try:
+        from brain.watcher.hot_reload import _emit_list_changed
+        _emit_list_changed()
+    except Exception as e:
+        logging.warning(f"list_changed notification failed for {name}: {e}")
+
+    # Reset failure counter on successful mutation
+    try:
+        from brain.engine.peer_review import reset_failure_count
+        reset_failure_count(name)
+    except Exception:
+        pass
 
     return MutationResult(
         success=True,

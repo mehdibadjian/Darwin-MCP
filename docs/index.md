@@ -31,6 +31,7 @@ Recipes for specific tasks. Find what you need quickly.
   - Rollback a skill version
   - Handle merge conflicts
   - Troubleshoot resource limits
+- **[Meshnet Setup](how-to/meshnet-setup.md)** — Connect Gemma 2b on your phone to Darwin-MCP over NordVPN Meshnet
 
 ### 📋 Reference
 
@@ -38,10 +39,14 @@ Deep technical documentation. Contracts, schemas, architecture.
 
 - **[Technical Manifesto](reference/technical-manifesto.md)** — Complete API contracts, Git state machine, sandbox isolation, BSL biosafety layers
 - **[Agile Backlog](reference/agile-backlog.md)** — Epics, user stories, acceptance criteria, sprint plans
+- **[Cloud-less AI Plan](reference/cloudless-ai-plan.md)** — Gemma 2b × Darwin-MCP architecture, tool routing, self-healing wrapper, Meshnet handover
 
 ---
 
 ## Navigation by Role
+
+### 📡 I want to run Gemma 2b on my phone with Darwin
+→ [Cloud-less AI Plan](reference/cloudless-ai-plan.md) + [How-To: Meshnet Setup](how-to/meshnet-setup.md)
 
 ### 🚀 I want to get started quickly
 → [Getting Started Tutorial](tutorials/getting-started.md)
@@ -96,10 +101,12 @@ docs/
 ├── tutorials/
 │   └── getting-started.md      ← Setup, create first skill
 ├── how-to/
-│   └── common-tasks.md         ← Practical recipes
+│   ├── common-tasks.md         ← Practical recipes
+│   └── meshnet-setup.md        ← Gemma 2b + NordVPN Meshnet
 └── reference/
     ├── technical-manifesto.md  ← API contracts
-    └── agile-backlog.md        ← Sprint planning
+    ├── agile-backlog.md        ← Sprint planning
+    └── cloudless-ai-plan.md    ← Gemma 2b × Darwin-MCP architecture
 ```
 
 ---

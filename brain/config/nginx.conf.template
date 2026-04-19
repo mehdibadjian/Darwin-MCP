@@ -1,0 +1,79 @@
+# brain/config/nginx.conf.template
+# Darwin-MCP — Nginx Reverse Proxy + SSL Configuration Template
+#
+# Usage:
+#   1. Copy to /etc/nginx/sites-available/darwin-mcp
+#   2. Replace DOMAIN_NAME with your actual domain (e.g. brain.yourdomain.com)
+#   3. Run: sudo certbot --nginx -d DOMAIN_NAME
+#   4. Enable: sudo ln -s /etc/nginx/sites-available/darwin-mcp /etc/nginx/sites-enabled/
+#   5. Reload: sudo nginx -t && sudo systemctl reload nginx
+
+# --- HTTP → HTTPS redirect (Certbot fills this in automatically) ---
+server {
+    listen 80;
+    listen [::]:80;
+    server_name DOMAIN_NAME;
+
+    # Certbot will insert the ACME challenge block here automatically.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# --- HTTPS with SSL (filled in by Certbot) ---
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name DOMAIN_NAME;
+
+    # Certbot will replace these paths after running:
+    #   sudo certbot --nginx -d DOMAIN_NAME
+    ssl_certificate     /etc/letsencrypt/live/DOMAIN_NAME/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/DOMAIN_NAME/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # --- SSE endpoint: proxy to Darwin-MCP on localhost:8000 ---
+    location /sse {
+        proxy_pass         http://127.0.0.1:8000/sse;
+        proxy_http_version 1.1;
+
+        # Keep SSE connection alive
+        proxy_set_header   Connection "";
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # Disable buffering — SSE requires streaming
+        proxy_buffering       off;
+        proxy_cache           off;
+        proxy_read_timeout    3600s;
+        proxy_send_timeout    3600s;
+        chunked_transfer_encoding on;
+
+        # Forward Authorization header (Bearer token)
+        proxy_pass_request_headers on;
+    }
+
+    # --- REST endpoints: /evolve, /search, /tools ---
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+}

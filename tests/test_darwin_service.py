@@ -21,11 +21,15 @@ def test_working_directory():
     assert cfg.get("Service", "WorkingDirectory") == "/opt/mcp-evolution-core"
 
 
-def test_execstart_uses_venv_python():
+def test_execstart_uses_venv_binary():
     cfg = _parse_unit()
     exec_start = cfg.get("Service", "ExecStart")
-    assert ".venv/bin/python" in exec_start, f"ExecStart should use venv python, got: {exec_start}"
+    assert ".venv/bin/" in exec_start, f"ExecStart should use venv binary, got: {exec_start}"
     assert "/usr/bin/python" not in exec_start
+    # Deployment hardening: uvicorn is the production ASGI server for FastAPI.
+    assert "uvicorn" in exec_start or "python" in exec_start, (
+        f"ExecStart must use uvicorn or venv python, got: {exec_start}"
+    )
 
 
 def test_restart_on_failure():

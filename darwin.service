@@ -6,12 +6,22 @@ After=network.target
 Type=simple
 User=darwin
 WorkingDirectory=/opt/mcp-evolution-core
-ExecStart=/opt/mcp-evolution-core/.venv/bin/python brain/bridge/sse_server.py
+ExecStart=/opt/mcp-evolution-core/.venv/bin/uvicorn brain.bridge.sse_server:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5
 StartLimitBurst=5
 StartLimitIntervalSec=60
+
+# Bearer token is injected via EnvironmentFile — never hardcode it in source.
+# Create /opt/mcp-evolution-core/.env and add:
+#   MCP_BEARER_TOKEN=<your-secret-token>
 EnvironmentFile=/opt/mcp-evolution-core/.env
+
+# Harden the service process
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mcp-evolution-core/memory /tmp
 
 [Install]
 WantedBy=multi-user.target
